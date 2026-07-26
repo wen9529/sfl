@@ -76,16 +76,49 @@ export function parseMacauApiResponse(json: any): DrawRecord[] {
   });
 }
 
+export function getMacau3MinIssueInfo(offsetDraws = 0): { expect: string; openTime: string } {
+  const now = new Date();
+  const bjOffset = 8 * 60 * 60 * 1000;
+  const bjDate = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + bjOffset);
+
+  const hours = bjDate.getHours();
+  const minutes = bjDate.getMinutes();
+  const totalMinutesToday = hours * 60 + minutes;
+
+  const latestCompletedIndexToday = Math.floor(totalMinutesToday / 3);
+
+  let targetIndexToday = latestCompletedIndexToday - offsetDraws;
+
+  const targetDate = new Date(bjDate);
+
+  while (targetIndexToday <= 0) {
+    targetDate.setDate(targetDate.getDate() - 1);
+    targetIndexToday += 480;
+  }
+
+  const yyyy = targetDate.getFullYear();
+  const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(targetDate.getDate()).padStart(2, '0');
+  const dateStr = `${yyyy}${mm}${dd}`;
+
+  const issueNumStr = String(targetIndexToday).padStart(3, '0');
+  const expect = `${dateStr}${issueNumStr}`;
+
+  const openTimeDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+  openTimeDate.setMinutes(targetIndexToday * 3);
+
+  const oY = openTimeDate.getFullYear();
+  const oM = String(openTimeDate.getMonth() + 1).padStart(2, '0');
+  const oD = String(openTimeDate.getDate()).padStart(2, '0');
+  const oH = String(openTimeDate.getHours()).padStart(2, '0');
+  const oMin = String(openTimeDate.getMinutes()).padStart(2, '0');
+  const openTimeStr = `${oY}-${oM}-${oD} ${oH}:${oMin}:00`;
+
+  return { expect, openTime: openTimeStr };
+}
+
 // Initial default seed draws based on user's exact sample
 function generateSeedDrawsMacauJC3(): DrawRecord[] {
-  const baseSample = {
-    expect: "20250504348",
-    openTime: "2025-05-04 17:21:00",
-    openCode: "20,40,23,09,27,14,18",
-    wave: "blue,red,red,blue,green,blue,red",
-    zodiac: "狗,虎,羊,雞,兔,龍,鼠"
-  };
-
   const presetCodes = [
     { code: "20,40,23,09,27,14,18", wave: "blue,red,red,blue,green,blue,red", zodiac: "狗,虎,羊,雞,兔,龍,鼠" },
     { code: "05,18,33,41,12,29,08", wave: "green,red,green,blue,red,red,red", zodiac: "馬,鼠,兔,猴,狗,虎,牛" },
@@ -99,14 +132,11 @@ function generateSeedDrawsMacauJC3(): DrawRecord[] {
     { code: "09,21,34,43,19,30,07", wave: "blue,green,red,green,red,red,red", zodiac: "鼠,虎,馬,猴,狗,牛,兔" },
   ];
 
-  const baseIssue = 20250504348;
   const records: DrawRecord[] = [];
 
   for (let i = 0; i < 25; i++) {
     const p = presetCodes[i % presetCodes.length];
-    const issueNum = baseIssue - i;
-    const dateObj = new Date(Date.now() - i * 3 * 60 * 1000);
-    const dateStr = dateObj.toISOString().replace('T', ' ').slice(0, 19);
+    const info = getMacau3MinIssueInfo(i);
 
     const rawCodes = p.code.split(',').map(n => parseInt(n, 10));
     const redBalls = rawCodes.slice(0, 6);
@@ -115,8 +145,8 @@ function generateSeedDrawsMacauJC3(): DrawRecord[] {
     const zodiacs = p.zodiac.split(',');
 
     records.push({
-      issue: String(issueNum),
-      date: dateStr,
+      issue: info.expect,
+      date: info.openTime,
       redBalls,
       blueBalls,
       waves,

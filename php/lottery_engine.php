@@ -5,17 +5,53 @@
 
 require_once __DIR__ . '/utils.php';
 
+if (!function_exists('getMacau3MinIssueInfoPHP')) {
+    /**
+     * 根据北京时间 (UTC+8) 精确计算澳门三分六合彩期号与开奖时间
+     * 北京时间 00:00 开始第一期 (001)，每 3 分钟一期，每天共 480 期
+     */
+    function getMacau3MinIssueInfoPHP($offsetDraws = 0) {
+        $dt = new DateTime('now', new DateTimeZone('Asia/Shanghai'));
+        $hours = (int)$dt->format('H');
+        $minutes = (int)$dt->format('i');
+        
+        $totalMinutesToday = $hours * 60 + $minutes;
+        $latestCompletedIndexToday = (int)floor($totalMinutesToday / 3);
+        
+        $targetIndexToday = $latestCompletedIndexToday - $offsetDraws;
+        
+        $targetDt = clone $dt;
+        while ($targetIndexToday <= 0) {
+            $targetDt->modify('-1 day');
+            $targetIndexToday += 480;
+        }
+        
+        $dateStr = $targetDt->format('Ymd');
+        $issueNumStr = sprintf('%03d', $targetIndexToday);
+        $expect = $dateStr . $issueNumStr;
+        
+        $openTimeDt = new DateTime($targetDt->format('Y-m-d') . ' 00:00:00', new DateTimeZone('Asia/Shanghai'));
+        $openTimeDt->modify('+' . ($targetIndexToday * 3) . ' minutes');
+        $openTimeStr = $openTimeDt->format('Y-m-d H:i:s');
+        
+        return [
+            'expect' => $expect,
+            'openTime' => $openTimeStr
+        ];
+    }
+}
+
 if (!function_exists('generateFallback50DrawsPHP')) {
     /**
      * 生成完整的 50 期澳门三分六合彩历史开奖模拟数据
      */
     function generateFallback50DrawsPHP($count = 50) {
         $draws = [];
-        $todayStr = date('Ymd');
-        $baseIssue = (int)($todayStr . '001') + 120; // 模拟当前最新期号
         
         for ($i = 0; $i < $count; $i++) {
-            $issue = (string)($baseIssue - $i);
+            $info = getMacau3MinIssueInfoPHP($i);
+            $issue = $info['expect'];
+            $timeStr = $info['openTime'];
             
             // 随机生成6个不重复平码
             $reds = [];
@@ -32,7 +68,6 @@ if (!function_exists('generateFallback50DrawsPHP')) {
             }
             
             $codeArr = array_merge($reds, [$blue]);
-            $timeStr = date('Y-m-d H:i:s', time() - $i * 180); // 每3分钟一期
             
             $draws[] = [
                 'expect' => $issue,

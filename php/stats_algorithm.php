@@ -127,8 +127,8 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
         }
 
         $stats = analyze50DrawsStatsPHP($draws);
-        $latestDraw = $draws[0] ?? null;
-        $nextIssue = $latestDraw ? (string)((int)$latestDraw['expect'] + 1) : date('Ymd') . '088';
+        $targetInfo = getMacau3MinIssueInfoPHP(-1);
+        $nextIssue = $targetInfo['expect'];
 
         // 建立权重表: 热号与回温号加权选号
         $weights = [];

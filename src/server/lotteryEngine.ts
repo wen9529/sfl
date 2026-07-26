@@ -33,15 +33,58 @@ export function getFiveElements(num: number): string {
 }
 
 /**
+ * 根据北京时间 (UTC+8) 精确计算澳门三分六合彩期号与开奖时间
+ * 北京时间 00:00:00 开始第一期 (001)，每 3 分钟一期，每天共 480 期
+ */
+export function getMacau3MinIssueInfo(offsetDraws = 0): { expect: string; openTime: string } {
+  const now = new Date();
+  const bjOffset = 8 * 60 * 60 * 1000;
+  const bjDate = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + bjOffset);
+
+  const hours = bjDate.getHours();
+  const minutes = bjDate.getMinutes();
+  const totalMinutesToday = hours * 60 + minutes;
+
+  const latestCompletedIndexToday = Math.floor(totalMinutesToday / 3);
+
+  let targetIndexToday = latestCompletedIndexToday - offsetDraws;
+
+  const targetDate = new Date(bjDate);
+
+  while (targetIndexToday <= 0) {
+    targetDate.setDate(targetDate.getDate() - 1);
+    targetIndexToday += 480;
+  }
+
+  const yyyy = targetDate.getFullYear();
+  const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+  const dd = String(targetDate.getDate()).padStart(2, '0');
+  const dateStr = `${yyyy}${mm}${dd}`;
+
+  const issueNumStr = String(targetIndexToday).padStart(3, '0');
+  const expect = `${dateStr}${issueNumStr}`;
+
+  const openTimeDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+  openTimeDate.setMinutes(targetIndexToday * 3);
+
+  const oY = openTimeDate.getFullYear();
+  const oM = String(openTimeDate.getMonth() + 1).padStart(2, '0');
+  const oD = String(openTimeDate.getDate()).padStart(2, '0');
+  const oH = String(openTimeDate.getHours()).padStart(2, '0');
+  const oMin = String(openTimeDate.getMinutes()).padStart(2, '0');
+  const openTimeStr = `${oY}-${oM}-${oD} ${oH}:${oMin}:00`;
+
+  return { expect, openTime: openTimeStr };
+}
+
+/**
  * 生成 50 期完整的 Macau 三分六合彩模拟数据
  */
 export function generate50MacauDraws(): MacauDrawItem[] {
   const list: MacauDrawItem[] = [];
-  const baseIssue = 20260726001 + 120;
-  const now = Date.now();
 
   for (let i = 0; i < 50; i++) {
-    const issue = String(baseIssue - i);
+    const info = getMacau3MinIssueInfo(i);
     const reds: number[] = [];
     while (reds.length < 6) {
       const r = Math.floor(Math.random() * 49) + 1;
@@ -52,12 +95,11 @@ export function generate50MacauDraws(): MacauDrawItem[] {
     while (reds.includes(blue)) blue = Math.floor(Math.random() * 49) + 1;
 
     const codeArr = [...reds, blue];
-    const openTimeStr = new Date(now - i * 180 * 1000).toISOString().replace('T', ' ').slice(0, 19);
 
     list.push({
-      expect: issue,
+      expect: info.expect,
       openCode: codeArr.join(','),
-      openTime: openTimeStr,
+      openTime: info.openTime,
       wave: codeArr.map(getWaveColor).join(','),
       zodiac: codeArr.map(getZodiac).join(','),
       fiveElements: codeArr.map(getFiveElements).join(','),

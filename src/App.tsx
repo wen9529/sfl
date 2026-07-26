@@ -23,7 +23,15 @@ export default function App() {
   const [allDraws, setAllDraws] = useState<Record<LotteryKind, DrawRecord[]>>(() => {
     try {
       const saved = localStorage.getItem('lottery_draw_data');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const latestIssue = parsed?.macaujc3?.[0]?.issue || '';
+        if (latestIssue.startsWith('2025') || latestIssue.endsWith('121')) {
+          localStorage.removeItem('lottery_draw_data');
+          return INITIAL_MOCK_DATA;
+        }
+        return parsed;
+      }
     } catch (e) {
       // fallback
     }

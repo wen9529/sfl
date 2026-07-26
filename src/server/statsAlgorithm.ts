@@ -1,4 +1,4 @@
-import { MacauDrawItem, getWaveColor, getZodiac, getFiveElements } from './lotteryEngine';
+import { MacauDrawItem, getWaveColor, getZodiac, getFiveElements, getMacau3MinIssueInfo } from './lotteryEngine';
 
 export interface DrawStatsAnalysis {
   totalDraws: number;
@@ -140,8 +140,8 @@ export function analyze50Draws(draws: MacauDrawItem[]): DrawStatsAnalysis {
  */
 export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionResult {
   const stats = analyze50Draws(draws);
-  const latest = draws[0];
-  const nextIssue = latest ? String(Number(latest.expect) + 1) : `${new Date().toISOString().slice(0, 10).replace(/-/g, '')}088`;
+  const targetInfo = getMacau3MinIssueInfo(-1);
+  const nextIssue = targetInfo.expect;
 
   const scores: { num: number; score: number }[] = [];
   for (let n = 1; n <= 49; n++) {
