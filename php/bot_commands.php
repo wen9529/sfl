@@ -30,7 +30,14 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             if ($text === 'cmd_draw') $text = '/draw';
             else if ($text === 'cmd_predict') $text = '/predict';
             else if ($text === 'cmd_stats') $text = '/stats';
-            else if ($text === 'cmd_history') $text = '/history 5';
+            else if (strpos($text, 'cmd_history') === 0) {
+                if (preg_match('/page_(\d+)/', $text, $matches)) {
+                    $page = intval($matches[1]);
+                    $text = "/history {$page}";
+                } else {
+                    $text = '/history 1';
+                }
+            }
             else if ($text === 'cmd_help') $text = '/help';
 
             // 响应 callback 消除按钮加载动画
@@ -46,7 +53,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             if (strpos($text, '最新开奖') !== false) $text = '/draw';
             else if (strpos($text, '智能预测') !== false) $text = '/predict';
             else if (strpos($text, '430期盈亏') !== false || strpos($text, '盈亏') !== false) $text = '/stats';
-            else if (strpos($text, '历史记录') !== false) $text = '/history 5';
+            else if (strpos($text, '历史记录') !== false) $text = '/history 1';
             else if (strpos($text, '帮助') !== false) $text = '/help';
         }
 
@@ -76,7 +83,6 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 ]);
 
                 if (!($res['ok'] ?? false)) {
-                    // 若编辑失败(如相同内容)则回退为发送新消息
                     sendTgRequestPHP($token, 'sendMessage', [
                         'chat_id' => $chatId,
                         'text' => $msgText,
@@ -93,7 +99,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     'reply_markup' => ['inline_keyboard' => $inlineButtons]
                 ]);
 
-                // 如果是用户主动发送文本或/start，同步更新底部常驻菜单
+                // 同步配置底部常驻菜单
                 sendTgRequestPHP($token, 'sendMessage', [
                     'chat_id' => $chatId,
                     'text' => '📱 底部常驻菜单已配置，可随时点击切换：',
@@ -106,17 +112,16 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
             $msgText = "<b>🎰 澳门三分六合彩 · Telegram Bot 极速助手</b>\n"
                      . "--------------------------------------\n"
-                     . "<b>🎰 最新开奖</b> - 查询最新一期开奖结果\n"
-                     . "<b>📜 历史记录</b> - 查看近 5 期开奖历史\n"
-                     . "<b>🧠 智能预测</b> - 50期统计规律 AI 智能预测\n"
-                     . "<b>📊 430期盈亏</b> - 每日 430 期预测下注回测报表\n"
-                     . "<b>❓ 帮助菜单</b> - 显示使用功能说明\n"
+                     . "<b>🎰 最新开奖</b> - 查询最新一期开奖结果 (含生肖波色)\n"
+                     . "<b>📜 历史记录</b> - 翻页查看 50 期开奖历史\n"
+                     . "<b>🧠 智能预测</b> - 50期规律概率加权 AI 智能预测\n"
+                     . "<b>📊 430期盈亏</b> - 每日预测下注动态累计盈亏报表\n"
+                     . "<b>❓ 帮助菜单</b> - 显示功能与使用说明\n"
                      . "--------------------------------------\n"
-                     . "<i>💡 提示: 您可以直接点击下方【键盘菜单】或【帖子按钮】进行无缝切换，新内容将直接覆盖更新旧帖子！</i>";
+                     . "<i>💡 提示: 点击下方【键盘菜单】即可切换功能，帖子内按钮提供翻页与刷新支持。</i>";
 
             $inlineButtons = [
-                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
-                [['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats'], ['text' => '📜 5期历史', 'callback_data' => 'cmd_history']]
+                [['text' => '🔄 刷新使用说明', 'callback_data' => 'cmd_help']]
             ];
 
             $deliverMessage($msgText, $inlineButtons);
@@ -152,8 +157,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             }
 
             $inlineButtons = [
-                [['text' => '🔄 刷新数据', 'callback_data' => 'cmd_draw'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
-                [['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats'], ['text' => '📜 5期历史', 'callback_data' => 'cmd_history']]
+                [['text' => '🔄 刷新最新开奖', 'callback_data' => 'cmd_draw']]
             ];
 
             $deliverMessage($msgText, $inlineButtons);
@@ -161,15 +165,21 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             return;
         }
 
-        // 3. /history 历史记录查询
+        // 3. /history 历史记录翻页查询
         if (strpos($text, '/history') === 0) {
             $parts = explode(' ', $text);
-            $count = isset($parts[1]) && is_numeric($parts[1]) ? intval($parts[1]) : 5;
-            if ($count < 1) $count = 5;
-            if ($count > 10) $count = 10;
+            $page = isset($parts[1]) && is_numeric($parts[1]) ? intval($parts[1]) : 1;
+            $pageSize = 5;
 
             $draws = getLatest50DrawsPHP();
-            $slice = array_slice($draws, 0, $count);
+            $totalItems = count($draws) ?: 50;
+            $totalPages = max(1, intval(ceil($totalItems / $pageSize)));
+
+            if ($page < 1) $page = 1;
+            if ($page > $totalPages) $page = $totalPages;
+
+            $startIndex = ($page - 1) * $pageSize;
+            $slice = array_slice($draws, $startIndex, $pageSize);
             $lines = [];
 
             foreach ($slice as $item) {
@@ -188,19 +198,28 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                          . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$wave})";
             }
 
-            $msgText = "<b>📜 澳门三分六合彩 · 近 {$count} 期历史开奖记录</b>\n"
+            $msgText = "<b>📜 澳门三分六合彩 · 开奖历史记录 (第 {$page}/{$totalPages} 页)</b>\n"
                      . "--------------------------------------\n"
                      . implode("\n\n", $lines) . "\n"
                      . "--------------------------------------\n"
                      . "刷新时间: " . date('H:i:s');
 
-            $inlineButtons = [
-                [['text' => '🔄 刷新历史', 'callback_data' => 'cmd_history'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
-                [['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats'], ['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw']]
-            ];
+            $pageButtons = [];
+            if ($page > 1) {
+                $pageButtons[] = ['text' => "◀️ 上一页 (" . ($page - 1) . "/{$totalPages})", 'callback_data' => "cmd_history_page_" . ($page - 1)];
+            }
+            if ($page < $totalPages) {
+                $pageButtons[] = ['text' => "▶️ 下一页 (" . ($page + 1) . "/{$totalPages})", 'callback_data' => "cmd_history_page_" . ($page + 1)];
+            }
+
+            $inlineButtons = [];
+            if (!empty($pageButtons)) {
+                $inlineButtons[] = $pageButtons;
+            }
+            $inlineButtons[] = [['text' => "🔄 刷新本页 ({$page}/{$totalPages})", 'callback_data' => "cmd_history_page_{$page}"]];
 
             $deliverMessage($msgText, $inlineButtons);
-            writeLogPHP('Webhook指令', 'success', "响应 /history {$count} 给 {$chatId}");
+            writeLogPHP('Webhook指令', 'success', "响应 /history page {$page} 给 {$chatId}");
             return;
         }
 
@@ -225,8 +244,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "<i>说明: 前50期为数据积累，后430期预测结算。开出49时大小单双退本金。生成时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
-                [['text' => '🔄 刷新预测', 'callback_data' => 'cmd_predict'], ['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats']],
-                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '❓ 帮助菜单', 'callback_data' => 'cmd_help']]
+                [['text' => '🔄 重新精算推演', 'callback_data' => 'cmd_predict']]
             ];
 
             $deliverMessage($msgText, $inlineButtons);
@@ -234,14 +252,27 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             return;
         }
 
-        // 5. /stats 或 /profit 或 /pnl 430期盈亏报表
+        // 5. /stats 或 /profit 或 /pnl 动态累计盈亏报表
         if (strpos($text, '/stats') === 0 || strpos($text, '/profit') === 0 || strpos($text, '/pnl') === 0) {
             $draws = getLatest50DrawsPHP();
             $pnl = calculateProfitAndLossPHP($draws);
 
-            $msgText = "<b>📊 澳门三分六合彩 · 430期预测下注回测盈亏报表</b>\n"
+            $titleText = '<b>📊 澳门三分六合彩 · 430期预测下注回测盈亏报表</b>';
+            $statusText = '';
+
+            if ($pnl['predictedRounds'] === 0) {
+                $statusText = "⏳ <b>今日进度</b>: 算法数据积累中 (已完成 <b>{$pnl['dayDrawNum']}/50</b> 期基准开奖)，第 51 期开奖开启智能预测下注结算。";
+            } else if (!$pnl['isCompleted']) {
+                $titleText = '<b>📊 澳门三分六合彩 · 今日实时累计盈亏报表</b>';
+                $statusText = "<b>当前进度</b>: 已累计预测下注 <code>{$pnl['predictedRounds']}</code> 期 (已开出第 {$pnl['dayDrawNum']} 期，目标 430 期)";
+            } else {
+                $titleText = '<b>📊 澳门三分六合彩 · 全天 430 期盈亏结算报表</b>';
+                $statusText = "<b>当前进度</b>: <code>今日 430 期预测结算完毕 ✅</code>";
+            }
+
+            $msgText = "{$titleText}\n"
                      . "--------------------------------------\n"
-                     . "<b>累计预测期数</b>: <code>430</code> 期实盘数据跟踪 (日开480期-前50期积累)\n"
+                     . "{$statusText}\n"
                      . "<b>累计总下注</b>: <code>" . number_format($pnl['totalBet']) . " USDT</code> (300/期)\n"
                      . "<b>累计总派彩</b>: <code>" . number_format($pnl['totalPayout']) . " USDT</code>\n"
                      . "<b>累计净盈亏</b>: <b>+" . number_format($pnl['netProfit']) . " USDT 📈</b>\n"
@@ -256,8 +287,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
-                [['text' => '🔄 刷新报表', 'callback_data' => 'cmd_stats'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
-                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '📜 5期历史', 'callback_data' => 'cmd_history']]
+                [['text' => '🔄 刷新盈亏结算', 'callback_data' => 'cmd_stats']]
             ];
 
             $deliverMessage($msgText, $inlineButtons);
@@ -266,3 +296,4 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         }
     }
 }
+
