@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
@@ -9,7 +10,7 @@ async function startServer() {
 
   app.use(express.json({ limit: "5mb" }));
 
-  // Telegram Bot Store & State
+  // Telegram Bot Store & State (initializes from process.env / .env)
   let telegramConfig = {
     botToken: process.env.TELEGRAM_BOT_TOKEN || "",
     chatId: process.env.TELEGRAM_CHAT_ID || "",
