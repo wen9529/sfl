@@ -1,0 +1,6 @@
+{
+  "name": "彩票开奖预测与数据分析系统",
+  "description": "专业级彩票历史数据分析、热冷号遗漏统计、走势图表、智能预测算法与Gemini AI深度盘析系统。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
