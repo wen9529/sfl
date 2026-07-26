@@ -162,15 +162,12 @@ async function startServer() {
     res.status(200).send("OK");
     try {
       const update = req.body;
-      if (!update?.message?.text) return;
+      if (!update || (!update.message && !update.callback_query)) return;
 
-      const chatId = update.message.chat.id;
-      const text = update.message.text;
       const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
-
       if (!token) return;
 
-      await processTelegramMessage(token, chatId, text, current50Draws);
+      await processTelegramMessage(token, update, current50Draws);
     } catch (e) {
       console.error("Webhook error:", e);
     }

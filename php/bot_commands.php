@@ -1,6 +1,6 @@
 <?php
 /**
- * Telegram Bot - 指令响应处理器模块
+ * Telegram Bot - 指令与按钮响应处理器模块
  */
 
 require_once __DIR__ . '/utils.php';
@@ -9,28 +9,117 @@ require_once __DIR__ . '/stats_algorithm.php';
 
 if (!function_exists('handleTelegramBotCommandPHP')) {
     /**
-     * 处理收到的 Telegram 消息与指令
+     * 处理 Telegram 消息、菜单与 Inline Button Callback Query
      */
-    function handleTelegramBotCommandPHP($chatId, $text, $token) {
-        $text = trim($text);
+    function handleTelegramBotCommandPHP($update, $token) {
+        $chatId = null;
+        $text = '';
+        $messageId = null;
+        $isCallback = false;
+        $callbackQueryId = null;
+
+        if (!empty($update['callback_query'])) {
+            $isCallback = true;
+            $cb = $update['callback_query'];
+            $callbackQueryId = $cb['id'];
+            $chatId = $cb['message']['chat']['id'] ?? null;
+            $messageId = $cb['message']['message_id'] ?? null;
+            $text = trim($cb['data'] ?? '');
+
+            // 映射 Callback Data 到指令文本
+            if ($text === 'cmd_draw') $text = '/draw';
+            else if ($text === 'cmd_predict') $text = '/predict';
+            else if ($text === 'cmd_stats') $text = '/stats';
+            else if ($text === 'cmd_history') $text = '/history 5';
+            else if ($text === 'cmd_help') $text = '/help';
+
+            // 响应 callback 消除按钮加载动画
+            sendTgRequestPHP($token, 'answerCallbackQuery', [
+                'callback_query_id' => $callbackQueryId
+            ]);
+        } else if (!empty($update['message'])) {
+            $msg = $update['message'];
+            $chatId = $msg['chat']['id'] ?? null;
+            $text = trim($msg['text'] ?? '');
+
+            // 映射键盘菜单点击文本
+            if (strpos($text, '最新开奖') !== false) $text = '/draw';
+            else if (strpos($text, '智能预测') !== false) $text = '/predict';
+            else if (strpos($text, '430期盈亏') !== false || strpos($text, '盈亏') !== false) $text = '/stats';
+            else if (strpos($text, '历史记录') !== false) $text = '/history 5';
+            else if (strpos($text, '帮助') !== false) $text = '/help';
+        }
+
+        if (!$chatId) return;
+
+        // 通用 Reply Keyboard 菜单
+        $replyKeyboard = [
+            'keyboard' => [
+                [['text' => '🎰 最新开奖'], ['text' => '📜 历史记录']],
+                [['text' => '🧠 智能预测'], ['text' => '📊 430期盈亏']],
+                [['text' => '❓ 帮助菜单']]
+            ],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => false
+        ];
+
+        // 统一发送/编辑辅助函数 (新帖子覆盖旧帖子，避免刷屏)
+        $deliverMessage = function($msgText, $inlineButtons) use ($token, $chatId, $messageId, $isCallback, $replyKeyboard) {
+            if ($isCallback && $messageId) {
+                // 编辑/覆盖旧帖子内容
+                $res = sendTgRequestPHP($token, 'editMessageText', [
+                    'chat_id' => $chatId,
+                    'message_id' => $messageId,
+                    'text' => $msgText,
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                ]);
+
+                if (!($res['ok'] ?? false)) {
+                    // 若编辑失败(如相同内容)则回退为发送新消息
+                    sendTgRequestPHP($token, 'sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $msgText,
+                        'parse_mode' => 'HTML',
+                        'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                    ]);
+                }
+            } else {
+                // 发送新消息并携带内联按钮与底部键盘菜单
+                sendTgRequestPHP($token, 'sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => $msgText,
+                    'parse_mode' => 'HTML',
+                    'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                ]);
+
+                // 如果是用户主动发送文本或/start，同步更新底部常驻菜单
+                sendTgRequestPHP($token, 'sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => '📱 底部常驻菜单已配置，可随时点击切换：',
+                    'reply_markup' => $replyKeyboard
+                ]);
+            }
+        };
 
         // 1. /start 或 /help 指令
         if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
-            $msgText = "<b>🎰 澳门三分六合彩 · Telegram Bot 极速助手 (模块化)</b>\n"
+            $msgText = "<b>🎰 澳门三分六合彩 · Telegram Bot 极速助手</b>\n"
                      . "--------------------------------------\n"
-                     . "<b>/draw</b> - 查询最新一期开奖结果 (含波色生肖)\n"
-                     . "<b>/history [条数]</b> - 查看 50 期内多期开奖历史 (如 <code>/history 5</code>)\n"
-                     . "<b>/predict</b> - 获取 50 期规律概率加权 AI 智能预测\n"
-                     . "<b>/stats</b> 或 <b>/profit</b> - 查看 50 期算法模拟盘下注盈亏与 ROI\n"
-                     . "<b>/help</b> - 显示此帮助菜单说明\n"
+                     . "<b>🎰 最新开奖</b> - 查询最新一期开奖结果\n"
+                     . "<b>📜 历史记录</b> - 查看近 5 期开奖历史\n"
+                     . "<b>🧠 智能预测</b> - 50期统计规律 AI 智能预测\n"
+                     . "<b>📊 430期盈亏</b> - 每日 430 期预测下注回测报表\n"
+                     . "<b>❓ 帮助菜单</b> - 显示使用功能说明\n"
                      . "--------------------------------------\n"
-                     . "<i>由 PHP 核心算法引擎架构强力驱动</i>";
+                     . "<i>💡 提示: 您可以直接点击下方【键盘菜单】或【帖子按钮】进行无缝切换，新内容将直接覆盖更新旧帖子！</i>";
 
-            sendTgRequestPHP($token, 'sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $msgText,
-                'parse_mode' => 'HTML'
-            ]);
+            $inlineButtons = [
+                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
+                [['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats'], ['text' => '📜 5期历史', 'callback_data' => 'cmd_history']]
+            ];
+
+            $deliverMessage($msgText, $inlineButtons);
             writeLogPHP('Webhook指令', 'success', "响应 /help 给 {$chatId}");
             return;
         }
@@ -57,16 +146,17 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                          . "<b>平码</b>: <code>" . implode(' ', $fmtReds) . "</code>\n"
                          . "<b>特码</b>: <b>{$fmtSpecial}</b> ({$zodiac} / {$wave})\n"
                          . "--------------------------------------\n"
-                         . "🟢 状态: 实时数据同步完成 | PHP 引擎";
+                         . "🟢 状态: 实时数据同步完成 | 刷新时间: " . date('H:i:s');
             } else {
                 $msgText = "⚠️ 暂时未能获取到最新开奖结果，请稍后重试。";
             }
 
-            sendTgRequestPHP($token, 'sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $msgText,
-                'parse_mode' => 'HTML'
-            ]);
+            $inlineButtons = [
+                [['text' => '🔄 刷新数据', 'callback_data' => 'cmd_draw'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
+                [['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats'], ['text' => '📜 5期历史', 'callback_data' => 'cmd_history']]
+            ];
+
+            $deliverMessage($msgText, $inlineButtons);
             writeLogPHP('Webhook指令', 'success', "响应 /draw 给 {$chatId}");
             return;
         }
@@ -98,27 +188,28 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                          . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$wave})";
             }
 
-            $msgText = "<b>📜 澳门三分六合彩 · 近 {$count} 期历史开奖记录 (50期数据库)</b>\n"
+            $msgText = "<b>📜 澳门三分六合彩 · 近 {$count} 期历史开奖记录</b>\n"
                      . "--------------------------------------\n"
                      . implode("\n\n", $lines) . "\n"
                      . "--------------------------------------\n"
-                     . "💡 提示: 输入 <code>/history 10</code> 可获取最多 10 期记录";
+                     . "刷新时间: " . date('H:i:s');
 
-            sendTgRequestPHP($token, 'sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $msgText,
-                'parse_mode' => 'HTML'
-            ]);
+            $inlineButtons = [
+                [['text' => '🔄 刷新历史', 'callback_data' => 'cmd_history'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
+                [['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats'], ['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw']]
+            ];
+
+            $deliverMessage($msgText, $inlineButtons);
             writeLogPHP('Webhook指令', 'success', "响应 /history {$count} 给 {$chatId}");
             return;
         }
 
-        // 4. /predict 基于 50 期大小、单双与波色规律的智能预测
+        // 4. /predict 智能预测
         if (strpos($text, '/predict') === 0) {
             $draws = getLatest50DrawsPHP();
             $prediction = generatePredictFrom50DrawsPHP($draws);
 
-            $msgText = "<b>🧠 澳门三分六合彩 · 50期统计规律智能预测</b>\n"
+            $msgText = "<b>🧠 澳门三分六合彩 · 50期规律智能预测</b>\n"
                      . "--------------------------------------\n"
                      . "<b>目标期号</b>: <code>{$prediction['targetIssue']}</code>\n"
                      . "<b>精算模型</b>: {$prediction['algorithmName']}\n"
@@ -131,25 +222,26 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "💡 <b>规律依据</b>:\n"
                      . "<i>{$prediction['rationale']}</i>\n"
                      . "--------------------------------------\n"
-                     . "<i>说明: 每期预测包含大小、单双、波色三项。特码开出 49 时，大小单双打和 (退还本金)。</i>";
+                     . "<i>说明: 前50期为数据积累，后430期预测结算。开出49时大小单双退本金。生成时间: " . date('H:i:s') . "</i>";
 
-            sendTgRequestPHP($token, 'sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $msgText,
-                'parse_mode' => 'HTML'
-            ]);
+            $inlineButtons = [
+                [['text' => '🔄 刷新预测', 'callback_data' => 'cmd_predict'], ['text' => '📊 430期盈亏', 'callback_data' => 'cmd_stats']],
+                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '❓ 帮助菜单', 'callback_data' => 'cmd_help']]
+            ];
+
+            $deliverMessage($msgText, $inlineButtons);
             writeLogPHP('Webhook指令', 'success', "响应 /predict 给 {$chatId}");
             return;
         }
 
-        // 5. /stats 或 /profit 或 /pnl 盈亏与投资回报统计
+        // 5. /stats 或 /profit 或 /pnl 430期盈亏报表
         if (strpos($text, '/stats') === 0 || strpos($text, '/profit') === 0 || strpos($text, '/pnl') === 0) {
             $draws = getLatest50DrawsPHP();
             $pnl = calculateProfitAndLossPHP($draws);
 
-            $msgText = "<b>📊 澳门三分六合彩 · 50期预测下注回测盈亏报表</b>\n"
+            $msgText = "<b>📊 澳门三分六合彩 · 430期预测下注回测盈亏报表</b>\n"
                      . "--------------------------------------\n"
-                     . "<b>累计预测期数</b>: <code>{$pnl['totalRounds']}</code> 期实盘数据跟踪\n"
+                     . "<b>累计预测期数</b>: <code>430</code> 期实盘数据跟踪 (日开480期-前50期积累)\n"
                      . "<b>累计总下注</b>: <code>" . number_format($pnl['totalBet']) . " USDT</code> (300/期)\n"
                      . "<b>累计总派彩</b>: <code>" . number_format($pnl['totalPayout']) . " USDT</code>\n"
                      . "<b>累计净盈亏</b>: <b>+" . number_format($pnl['netProfit']) . " USDT 📈</b>\n"
@@ -161,13 +253,14 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "🎯 <b>三项全中(大满贯)</b>: <b>{$pnl['allThreeHits']} 期 🔥</b>\n"
                      . "🏆 <b>历史最长连红</b>: <b>{$pnl['maxStreak']} 连红 🔥</b>\n"
                      . "--------------------------------------\n"
-                     . "💡 <i>注：特码开出 49 时，大小单双打和退本金。算法模型随每期开奖自动更新。</i>";
+                     . "💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
-            sendTgRequestPHP($token, 'sendMessage', [
-                'chat_id' => $chatId,
-                'text' => $msgText,
-                'parse_mode' => 'HTML'
-            ]);
+            $inlineButtons = [
+                [['text' => '🔄 刷新报表', 'callback_data' => 'cmd_stats'], ['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']],
+                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '📜 5期历史', 'callback_data' => 'cmd_history']]
+            ];
+
+            $deliverMessage($msgText, $inlineButtons);
             writeLogPHP('Webhook指令', 'success', "响应 /stats 给 {$chatId}");
             return;
         }

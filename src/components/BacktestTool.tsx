@@ -80,9 +80,9 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
       {/* Input Ticket Area */}
       <div className="mt-5 bg-slate-950/60 p-4 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h3 className="text-sm font-bold text-slate-200">50期算法模型下注回测规程</h3>
+          <h3 className="text-sm font-bold text-slate-200">430期算法模型下注回测规程</h3>
           <p className="text-xs text-slate-400 mt-1">
-            下注规则：每期对【大小】(1.95)、【单双】(1.95)、【波色】(红2.75/蓝绿2.98) 各投注 100 USDT (单期 300 USDT)。开 49 时大小单双退本金。
+            下注规则：每期对【大小】(1.95)、【单双】(1.95)、【波色】(红2.75/蓝绿2.98) 各投注 100 USDT (单期 300 USDT)。开 49 时大小单双退本金。前 50 期积累为算法基准，后 430 期预测结算。
           </p>
         </div>
         <button
@@ -98,7 +98,7 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
           ) : (
             <>
               <PlayCircle className="w-4 h-4" />
-              开启50期盈亏回测
+              开启430期盈亏回测
             </>
           )}
         </button>
@@ -140,7 +140,7 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
           {/* Winning Breakdown List */}
           <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
             <h4 className="font-bold text-slate-200 border-b border-slate-800 pb-2 mb-2 flex items-center justify-between">
-              <span>50 期形态命中与连红详情</span>
+              <span>430 期形态命中与连红详情</span>
               <span className="text-slate-400 font-normal">
                 最长连红: <strong className="text-cyan-400">{summary.maxStreak} 连红 🔥</strong>
               </span>
