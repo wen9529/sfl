@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Server, BarChart2, ShieldAlert, Cpu, Radio, RefreshCw } from 'lucide-react';
+import { Sparkles, Server, BarChart2, ShieldAlert, Cpu, Radio, RefreshCw, Bot } from 'lucide-react';
 import { LotteryKind } from '../types';
 
 interface HeaderProps {
@@ -7,6 +7,7 @@ interface HeaderProps {
   onSelectLottery: (kind: LotteryKind) => void;
   onOpenServ00Modal: () => void;
   onOpenRecordManager: () => void;
+  onOpenTelegramModal?: () => void;
   onSyncLiveApi?: () => void;
   isSyncing?: boolean;
   activeTab: 'analytics' | 'prediction' | 'backtest' | 'aiReport';
@@ -16,6 +17,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onOpenServ00Modal,
   onOpenRecordManager,
+  onOpenTelegramModal,
   onSyncLiveApi,
   isSyncing,
   activeTab,
@@ -67,6 +69,17 @@ export const Header: React.FC<HeaderProps> = ({
               <BarChart2 className="w-3.5 h-3.5 text-slate-400" />
               <span className="hidden sm:inline">开奖数据管理</span>
             </button>
+
+            {onOpenTelegramModal && (
+              <button
+                onClick={onOpenTelegramModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-950/80 hover:bg-sky-900/80 text-sky-300 border border-sky-500/30 transition-all shadow-sm"
+                title="Telegram 机器人管理员中心与推送"
+              >
+                <Bot className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden sm:inline">TG 管理员</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenServ00Modal}

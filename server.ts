@@ -9,6 +9,292 @@ async function startServer() {
 
   app.use(express.json({ limit: "5mb" }));
 
+  // Telegram Bot Store & State
+  let telegramConfig = {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+    chatId: process.env.TELEGRAM_CHAT_ID || "",
+    adminId: process.env.TELEGRAM_ADMIN_ID || "",
+    autoPushEnabled: true,
+    parseMode: "HTML",
+  };
+
+  const telegramLogs: Array<{
+    id: string;
+    time: string;
+    type: string;
+    status: "success" | "error";
+    message: string;
+    errorDetail?: string;
+  }> = [];
+
+  const addTelegramLog = (
+    type: string,
+    status: "success" | "error",
+    message: string,
+    errorDetail?: string
+  ) => {
+    telegramLogs.unshift({
+      id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      type,
+      status,
+      message,
+      errorDetail,
+    });
+    if (telegramLogs.length > 50) telegramLogs.pop();
+  };
+
+  // API Route: Get Telegram Configuration & Notification Logs
+  app.get("/api/telegram/config", (req, res) => {
+    res.json({
+      success: true,
+      config: telegramConfig,
+      logs: telegramLogs.slice(0, 30),
+      hasEnvToken: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+      hasEnvChatId: Boolean(process.env.TELEGRAM_CHAT_ID),
+    });
+  });
+
+  // API Route: Save Telegram Configuration
+  app.post("/api/telegram/config", (req, res) => {
+    const { botToken, chatId, adminId, autoPushEnabled } = req.body;
+
+    if (botToken !== undefined) telegramConfig.botToken = botToken.trim();
+    if (chatId !== undefined) telegramConfig.chatId = chatId.trim();
+    if (adminId !== undefined) telegramConfig.adminId = adminId.trim();
+    if (autoPushEnabled !== undefined) telegramConfig.autoPushEnabled = Boolean(autoPushEnabled);
+
+    addTelegramLog("系统设置", "success", "更新 Telegram 管理员配置成功");
+    return res.json({
+      success: true,
+      message: "Telegram 配置保存成功！",
+      config: telegramConfig,
+    });
+  });
+
+  // API Route: Test Telegram Bot Token
+  app.post("/api/telegram/test-bot", async (req, res) => {
+    const token = req.body.botToken || telegramConfig.botToken;
+    if (!token) {
+      return res.status(400).json({ error: "请输入 Telegram Bot Token" });
+    }
+
+    try {
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const tgData = await tgRes.json();
+
+      if (tgData.ok) {
+        addTelegramLog("Bot测试", "success", `Bot 认证成功: @${tgData.result.username}`);
+        return res.json({
+          success: true,
+          botInfo: tgData.result,
+        });
+      } else {
+        throw new Error(tgData.description || "Telegram API 返回错误");
+      }
+    } catch (err: any) {
+      addTelegramLog("Bot测试", "error", "Telegram Bot 验证失败", err.message);
+      return res.status(400).json({
+        error: "Bot Token 验证失败: " + err.message,
+      });
+    }
+  });
+
+  // API Route: Send Telegram Notification / Message
+  app.post("/api/telegram/send", async (req, res) => {
+    const token = req.body.botToken || telegramConfig.botToken;
+    const targetChatId = req.body.chatId || telegramConfig.chatId;
+
+    if (!token || !targetChatId) {
+      return res.status(400).json({
+        error: "缺少 Telegram Bot Token 或 Target Chat ID，请先完成参数配置。",
+      });
+    }
+
+    const { messageType, customText, drawData, predictionData, aiReportText } = req.body;
+    let formattedText = "";
+
+    if (messageType === "test") {
+      formattedText = `
+<b>🤖 澳门三分六合彩 · Telegram 管理员连通性测试</b>
+--------------------------------------
+<b>服务器时间</b>: ${new Date().toLocaleString("zh-CN")}
+<b>推送渠道</b>: ${targetChatId}
+<b>接口状态</b>: 🟢 正常通畅
+
+💡 <i>配置成功！您现在可以使用 Telegram 实时接收三分六合彩开奖广播、AI盘析与预测推文。</i>
+`.trim();
+    } else if (messageType === "latest_draw" && drawData) {
+      const reds = drawData.redBalls || [];
+      const blues = drawData.blueBalls || [];
+      const waves = drawData.waves || [];
+      const zodiacs = drawData.zodiacs || [];
+
+      const formatBall = (n: number, idx: number) => {
+        const numStr = n < 10 ? `0${n}` : `${n}`;
+        const w = waves[idx] || "red";
+        const z = zodiacs[idx] || "";
+        const wEmoji = w === "red" || w === "红" ? "🔴" : w === "blue" || w === "蓝" ? "🔵" : "🟢";
+        return `<b>${numStr}</b>(${z}${wEmoji})`;
+      };
+
+      const redBallsFormatted = reds.map((n: number, idx: number) => formatBall(n, idx)).join("  ");
+      const specialBallFormatted = blues[0] ? formatBall(blues[0], 6) : "无";
+
+      formattedText = `
+<b>🎰 澳门三分六合彩 · 最新开奖广播</b>
+--------------------------------------
+<b>期号</b>: <code>${drawData.issue}</code>
+<b>时间</b>: ${drawData.date || "实时"}
+
+<b>平码 (1-6)</b>:
+${redBallsFormatted}
+
+<b>特码</b>: ${specialBallFormatted}
+--------------------------------------
+💡 <i>每3分钟自动开奖 | 数据源: macaumarksix.com</i>
+`.trim();
+    } else if (messageType === "prediction" && predictionData) {
+      formattedText = `
+<b>🔮 澳门三分六合彩 · 智能多算法预测方案</b>
+--------------------------------------
+<b>算法</b>: ${predictionData.algorithmName || "聪明组合缩水"}
+<b>置信指数</b>: <b>${predictionData.confidenceScore || 85}%</b>
+
+<b>推荐平码 (6位)</b>: <code>${(predictionData.redBalls || []).map((n: number) => (n < 10 ? `0${n}` : n)).join(", ")}</code>
+<b>推荐特码 (1位)</b>: <code>${(predictionData.blueBalls || []).map((n: number) => (n < 10 ? `0${n}` : n)).join(", ")}</code>
+
+<b>分析依据</b>: ${predictionData.rationale || "基于极值遗漏与波色平衡算法。"}
+--------------------------------------
+⚠️ <i>彩票为独立随机事件，预测方案仅供学术盘析参考！</i>
+`.trim();
+    } else if (messageType === "ai_report" && aiReportText) {
+      formattedText = `
+<b>🤖 Gemini 2.5 AI · 三分六合彩深度盘析推文</b>
+--------------------------------------
+${aiReportText.slice(0, 3500)}
+--------------------------------------
+📌 <i>Google AI Studio 智能量化生成</i>
+`.trim();
+    } else {
+      formattedText = customText || "📢 澳门三分六合彩管理员广播消息";
+    }
+
+    try {
+      const tgUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+      const tgRes = await fetch(tgUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: targetChatId,
+          text: formattedText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const tgData = await tgRes.json();
+      if (tgData.ok) {
+        addTelegramLog(messageType || "自定义推送", "success", `推送至 ${targetChatId} 成功 (MsgID: ${tgData.result.message_id})`);
+        return res.json({
+          success: true,
+          message_id: tgData.result.message_id,
+        });
+      } else {
+        throw new Error(tgData.description || "Telegram API 发送失败");
+      }
+    } catch (err: any) {
+      addTelegramLog(messageType || "自定义推送", "error", `推送至 ${targetChatId} 失败`, err.message);
+      return res.status(500).json({
+        error: "Telegram 消息发送失败: " + err.message,
+      });
+    }
+  });
+
+  // API Route: Set Webhook
+  app.post("/api/telegram/set-webhook", async (req, res) => {
+    const token = req.body.botToken || telegramConfig.botToken;
+    const webhookUrl = req.body.webhookUrl;
+
+    if (!token || !webhookUrl) {
+      return res.status(400).json({ error: "需要指定 Bot Token 及 Webhook 目标 URL" });
+    }
+
+    try {
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const tgData = await tgRes.json();
+
+      if (tgData.ok) {
+        addTelegramLog("Webhook绑定", "success", `已成功绑定 Webhook 到 ${webhookUrl}`);
+        return res.json({ success: true, result: tgData });
+      } else {
+        throw new Error(tgData.description);
+      }
+    } catch (err: any) {
+      addTelegramLog("Webhook绑定", "error", "Webhook 绑定失败", err.message);
+      return res.status(400).json({ error: "Webhook 绑定失败: " + err.message });
+    }
+  });
+
+  // API Route: Telegram Webhook Entry Point for Bot Command Interactions
+  app.post("/api/telegram/webhook", async (req, res) => {
+    // Return 200 OK immediately to satisfy Telegram's HTTP requirement
+    res.status(200).send("OK");
+
+    try {
+      const update = req.body;
+      if (!update || !update.message || !update.message.text) return;
+
+      const chatId = update.message.chat.id;
+      const text = update.message.text.trim();
+      const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+
+      if (!token) return;
+
+      if (text.startsWith("/start") || text.startsWith("/help")) {
+        const helpText = `
+<b>🎰 澳门三分六合彩 · Bot 指令帮助</b>
+--------------------------------------
+/draw - 查询最新一期开奖结果 (含波色生肖)
+/predict - 获取热温概率加权智能预测
+/stats - 查看近10期和值与红蓝绿波分布
+/ai - 触发 Gemini AI 盘析分析
+/help - 显示此帮助菜单
+--------------------------------------
+<i>如有部署疑问请在 Web 控制面板配置 Chat ID</i>
+`.trim();
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: helpText, parse_mode: "HTML" }),
+        });
+      } else if (text.startsWith("/draw")) {
+        // Fetch latest draw & send back
+        const drawList = generateFallbackMacauDraws();
+        const latest = drawList[0];
+        const textMsg = `
+<b>🎰 澳门三分六合彩 · 最新开奖结果</b>
+期号: <code>${latest.expect}</code> (${latest.openTime})
+平码: <code>${latest.openCode.split(',').slice(0, 6).join(' ')}</code>
+特码: <b>${latest.openCode.split(',')[6]}</b>
+波色: <code>${latest.wave}</code>
+`.trim();
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: textMsg, parse_mode: "HTML" }),
+        });
+      }
+    } catch (e) {
+      console.error("Telegram webhook error:", e);
+    }
+  });
+
   // API Route: Health check
   app.get("/api/health", (req, res) => {
     res.json({

@@ -15,6 +15,7 @@ import { GeminiAIAdvisor } from './components/GeminiAIAdvisor';
 import { BacktestTool } from './components/BacktestTool';
 import { Serv00DeploymentModal } from './components/Serv00DeploymentModal';
 import { RecordManager } from './components/RecordManager';
+import { TelegramAdminModal } from './components/TelegramAdminModal';
 import { ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'analytics' | 'prediction' | 'backtest' | 'aiReport'>('analytics');
   const [isServ00Open, setIsServ00Open] = useState<boolean>(false);
   const [isRecordManagerOpen, setIsRecordManagerOpen] = useState<boolean>(false);
+  const [isTelegramOpen, setIsTelegramOpen] = useState<boolean>(false);
   const [backtestPrediction, setBacktestPrediction] = useState<PredictionResult | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
@@ -110,6 +112,7 @@ export default function App() {
           onSelectLottery={(kind) => setSelectedLottery(kind)}
           onOpenServ00Modal={() => setIsServ00Open(true)}
           onOpenRecordManager={() => setIsRecordManagerOpen(true)}
+          onOpenTelegramModal={() => setIsTelegramOpen(true)}
           onSyncLiveApi={syncLiveMacauData}
           isSyncing={isSyncing}
           activeTab={activeTab}
@@ -203,6 +206,14 @@ export default function App() {
         onAddRecord={handleAddRecord}
         onDeleteRecord={handleDeleteRecord}
         onResetToDefault={handleResetToDefault}
+      />
+
+      {/* Telegram Bot Administrator & Push Center Modal */}
+      <TelegramAdminModal
+        isOpen={isTelegramOpen}
+        onClose={() => setIsTelegramOpen(false)}
+        latestDraw={latestDraw}
+        currentPrediction={backtestPrediction}
       />
     </div>
   );
