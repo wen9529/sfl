@@ -26,22 +26,23 @@ function writeLogPHP($type, $status, $msg, $detail = '') {
     file_put_contents($logFile, json_encode($logs, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 }
 
-// 提取 POST 请求 body
+// 提取 POST / GET / JSON 请求参数
 $inputRaw = file_get_contents('php://input');
-$inputData = json_decode($inputRaw, true) ?: [];
+$jsonParams = json_decode($inputRaw, true) ?: [];
+$requestParams = array_merge($_GET, $_POST, $jsonParams);
 
-$action = isset($_GET['action']) ? $_GET['action'] : '';
+$action = isset($requestParams['action']) ? $requestParams['action'] : '';
 
 // 1. Webhook 入口 (处理 Telegram 推送过来的指令 /draw, /predict, /help)
-if (empty($action) && !empty($inputData['message'])) {
+if (empty($action) && !empty($jsonParams['message'])) {
     http_response_code(200);
     echo "OK";
 
     $token = $config['telegram_bot_token'];
     if (!$token) exit;
 
-    $chatId = $inputData['message']['chat']['id'];
-    $text = trim($inputData['message']['text'] ?? '');
+    $chatId = $jsonParams['message']['chat']['id'];
+    $text = trim($jsonParams['message']['text'] ?? '');
 
     if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
         $msgText = "<b>🎰 澳门三分六合彩 · Telegram Bot 指令 (PHP 版)</b>\n"
@@ -79,15 +80,17 @@ if (empty($action) && !empty($inputData['message'])) {
 
 // 2. 发送消息 API
 if ($action === 'send') {
-    $token = !empty($inputData['botToken']) ? $inputData['botToken'] : $config['telegram_bot_token'];
-    $chatId = !empty($inputData['chatId']) ? $inputData['chatId'] : $config['telegram_chat_id'];
+    $token = !empty($requestParams['botToken']) ? $requestParams['botToken'] : $config['telegram_bot_token'];
+    $chatId = !empty($requestParams['chatId']) ? $requestParams['chatId'] : $config['telegram_chat_id'];
 
     if (!$token || !$chatId) {
-        echo json_encode(['error' => '缺少 Bot Token 或 Chat ID'], JSON_UNESCAPED_UNICODE);
+        echo json_encode([
+            'error' => '缺少 Bot Token 或 Chat ID，请在 config.php / .env 文件中设置，或在请求参数中传入 botToken 与 chatId'
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $customText = $inputData['customText'] ?? '📢 澳门三分六合彩管理员广播消息 (PHP)';
+    $customText = $requestParams['customText'] ?? '📢 澳门三分六合彩管理员广播消息 (PHP)';
 
     $res = sendTgRequestPHP($token, 'sendMessage', [
         'chat_id' => $chatId,
@@ -108,22 +111,39 @@ if ($action === 'send') {
 
 // 3. 绑定 Webhook API
 if ($action === 'set_webhook') {
-    $token = !empty($inputData['botToken']) ? $inputData['botToken'] : $config['telegram_bot_token'];
-    $webhookUrl = $inputData['webhookUrl'] ?? '';
+    $token = !empty($requestParams['botToken']) ? $requestParams['botToken'] : $config['telegram_bot_token'];
+    
+    // 自动判断并生成默认 Webhook URL (例如 https://wenge9529.serv00.net/telegram_bot.php)
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? 80) == 443 ? "https" : "https"; // 强推 https
+    $host = $_SERVER['HTTP_HOST'] ?? 'wenge9529.serv00.net';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/telegram_bot.php';
+    $defaultWebhookUrl = "{$protocol}://{$host}{$script}";
 
-    if (!$token || !$webhookUrl) {
-        echo json_encode(['error' => '缺少参数 Token 或 Webhook URL'], JSON_UNESCAPED_UNICODE);
+    $webhookUrl = !empty($requestParams['webhookUrl']) ? $requestParams['webhookUrl'] : $defaultWebhookUrl;
+
+    if (!$token) {
+        echo json_encode([
+            'error' => '缺少 Bot Token！请先在 config.php 或 .env 中填写 TELEGRAM_BOT_TOKEN，或在 URL 中添加 ?botToken=你的Token'
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     $res = sendTgRequestPHP($token, 'setWebhook', ['url' => $webhookUrl]);
     if ($res['ok'] ?? false) {
-        writeLogPHP('Webhook', 'success', "已绑定 Webhook: {$webhookUrl}");
-        echo json_encode(['success' => true, 'result' => $res], JSON_UNESCAPED_UNICODE);
+        writeLogPHP('Webhook', 'success', "已成功绑定 Webhook: {$webhookUrl}");
+        echo json_encode([
+            'success' => true,
+            'message' => 'Webhook 绑定成功！',
+            'webhookUrl' => $webhookUrl,
+            'result' => $res
+        ], JSON_UNESCAPED_UNICODE);
     } else {
         $err = $res['description'] ?? '绑定失败';
         writeLogPHP('Webhook', 'error', "Webhook 绑定失败", $err);
-        echo json_encode(['error' => $err], JSON_UNESCAPED_UNICODE);
+        echo json_encode([
+            'error' => $err,
+            'attemptedWebhookUrl' => $webhookUrl
+        ], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }
