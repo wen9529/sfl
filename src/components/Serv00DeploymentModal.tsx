@@ -19,7 +19,7 @@ export const Serv00DeploymentModal: React.FC<Serv00DeploymentModalProps> = ({
     geminiKey: 'AIzaSy...',
   });
 
-  const [activeTab, setActiveTab] = useState<'script' | 'manual' | 'env'>('script');
+  const [activeTab, setActiveTab] = useState<'script' | 'manual' | 'php'>('script');
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   if (!isOpen) return null;
@@ -58,10 +58,11 @@ echo "🛠️ 4/5 正在安装依赖并编译生成生产代码..."
 npm install
 npm run build
 
-echo "⚡ 5/5 使用 PM2 启动后台持久化守护进程..."
-npm install -g pm2 || true
-$HOME/.npm-global/bin/pm2 stop lottery-app || true
-$HOME/.npm-global/bin/pm2 start dist/server.cjs --name "lottery-app" --env production
+echo "⚡ 5/5 使用本地 PM2 启动后台持久化进程..."
+npm install pm2 --save-dev || true
+./node_modules/.bin/pm2 stop lottery-app || true
+PORT=$PORT ./node_modules/.bin/pm2 start dist/server.cjs --name "lottery-app"
+./node_modules/.bin/pm2 save || true
 
 echo "✅ 部署完成！请在 Serv00 面板添加 Web业 反向代理端口: $PORT"
 echo "🌐 访问地址: http://$DOMAIN"
@@ -175,7 +176,19 @@ echo "🌐 访问地址: http://$DOMAIN"
               }`}
             >
               <BookOpen className="w-4 h-4" />
-              2. Serv00 手动命令步骤教程
+              2. Serv00 手动 Node 命令教程
+            </button>
+
+            <button
+              onClick={() => setActiveTab('php')}
+              className={`pb-2 font-semibold text-xs border-b-2 flex items-center gap-1.5 transition-all ${
+                activeTab === 'php'
+                  ? 'border-indigo-500 text-indigo-400'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Server className="w-4 h-4 text-emerald-400" />
+              3. Serv00 纯 PHP 极速版 (无需 Node)
             </button>
           </div>
 
@@ -262,6 +275,41 @@ echo "🌐 访问地址: http://$DOMAIN"
                 </h4>
                 <code className="block bg-slate-900 p-2 rounded text-emerald-400 font-mono">
                   pm2 start dist/server.cjs --name "lottery-app"
+                </code>
+              </div>
+            </div>
+          )}
+
+          {/* Tab Content 3: Pure PHP Version */}
+          {activeTab === 'php' && (
+            <div className="space-y-4 text-slate-300 leading-relaxed">
+              <div className="bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl text-emerald-200">
+                <h4 className="font-bold text-sm mb-1 flex items-center gap-2">
+                  ⚡ Serv00 纯 PHP 独立部署模式
+                </h4>
+                <p className="text-xs text-slate-300">
+                  如果您不想在 Serv00 运行 Node.js 进程，可以直接使用项目根目录下 <code>php/</code> 文件夹中的全套原生 PHP 脚本！只需将文件上传至虚拟主机的 <code>public_html</code> 目录即可即刻运行。
+                </p>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                <h5 className="font-bold text-indigo-300">📁 PHP 核心脚本文件列表：</h5>
+                <ul className="list-disc list-inside space-y-1 text-slate-400 font-mono text-[11px]">
+                  <li><code>php/config.php</code> - Bot Token、Chat ID 与全盘参数配置</li>
+                  <li><code>php/index.php</code> - Web 前端控制面板 & 最新开奖显示</li>
+                  <li><code>php/api.php</code> - macaumarksix 实时数据代理与预测算法 API</li>
+                  <li><code>php/telegram_bot.php</code> - Telegram Webhook 接收与消息发送控制器</li>
+                  <li><code>php/cron.php</code> - Serv00 3分钟定时开奖自动广播脚本</li>
+                </ul>
+              </div>
+
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                <h5 className="font-bold text-indigo-300">⏰ 配置 Serv00 每 3 分钟 Cron 自动开奖播报：</h5>
+                <p className="text-slate-400 text-xs">
+                  在 Serv00 管理面板 → Cron jobs 添加如下定时命令：
+                </p>
+                <code className="block bg-slate-900 p-2 rounded text-amber-300 font-mono">
+                  {'*/3 * * * * /usr/local/bin/php ~/domains/' + config.domain + '/public_html/cron.php > /dev/null 2>&1'}
                 </code>
               </div>
             </div>

@@ -42,13 +42,13 @@ echo "📦 4/5 安装项目依赖并编译..."
 npm install
 npm run build
 
-# 5. 使用 PM2 启动持久化后台服务
+# 5. 使用本地 PM2 启动持久化后台服务
 echo "⚡ 5/5 使用 PM2 启动服务..."
-npm install -g pm2 || true
-export PATH="$HOME/.npm-global/bin:$PATH"
+npm install pm2 --save-dev || true
 
-pm2 stop lottery-app || true
-pm2 start dist/server.cjs --name "lottery-app" --env production
+./node_modules/.bin/pm2 stop lottery-app || true
+PORT=$PORT ./node_modules/.bin/pm2 start dist/server.cjs --name "lottery-app"
+./node_modules/.bin/pm2 save || true
 
 echo "======================================================"
 echo "🎉 部署完成！"
