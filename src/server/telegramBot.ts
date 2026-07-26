@@ -101,14 +101,14 @@ ${lines.join('\n\n')}
 <b>精算模型</b>: ${pred.algorithmName}
 <b>预测置信度</b>: <b>${pred.confidence}% 🔥</b>
 --------------------------------------
-🎯 <b>推荐平码 (6码)</b>: <code>${pred.formattedReds.join(' ')}</code>
-💎 <b>推荐特码 (1码)</b>: <b>[ ${pred.formattedBlue} ]</b> (${pred.specialZodiac} / ${pred.specialWave})
-🛡️ <b>防冷备选 (2码)</b>: <code>${pred.formattedBackups.join(' ')}</code>
+📏 <b>大小预测</b>: <b>【 ${pred.sizePred} 】</b> (赔率 1.95)
+🎲 <b>单双预测</b>: <b>【 ${pred.parityPred} 】</b> (赔率 1.95)
+🎨 <b>波色预测</b>: <b>【 ${pred.colorPred} 】</b> (赔率 ${pred.colorOdds})
 --------------------------------------
-💡 <b>50期规律依据</b>:
+💡 <b>规律依据</b>:
 <i>${pred.rationale}</i>
 --------------------------------------
-<i>声明: 预测基于近50期开奖记录规律与回归分析，请理性参考。</i>
+<i>说明: 每期预测包含大小、单双、波色三项。特码开出 49 时，大小单双打和 (退还本金)。</i>
 `.trim();
     await sendTg(msg);
     return;
@@ -116,29 +116,23 @@ ${lines.join('\n\n')}
 
   if (trimmedText.startsWith('/stats') || trimmedText.startsWith('/profit') || trimmedText.startsWith('/pnl')) {
     const pnl = calculateProfitAndLoss(draws);
-    const stats = analyze50Draws(draws);
-
-    const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
-    const hotStr = stats.hotNumbers.slice(0, 5).map(pad).join(' ');
-    const coldStr = stats.coldNumbers.slice(0, 5).map(pad).join(' ');
 
     const msg = `
-<b>📊 澳门三分六合彩 · 50期规律回测盈亏统计报表</b>
+<b>📊 澳门三分六合彩 · 50期预测下注回测盈亏报表</b>
 --------------------------------------
-<b>回测期数</b>: <code>${pnl.totalRounds}</code> 期实盘数据跟踪
-<b>累计投入</b>: <code>${pnl.totalBet.toLocaleString()} USDT</code>
-<b>累计派彩</b>: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
-<b>净盈亏额</b>: <b>+${pnl.netProfit.toLocaleString()} USDT 📈</b>
+<b>累计预测期数</b>: <code>${pnl.totalRounds}</code> 期实盘数据跟踪
+<b>累计总下注</b>: <code>${pnl.totalBet.toLocaleString()} USDT</code> (300/期)
+<b>累计总派彩</b>: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
+<b>累计净盈亏</b>: <b>+${pnl.netProfit.toLocaleString()} USDT 📈</b>
 <b>投资回报率</b>: <b>+${pnl.roi}% 🔥 (ROI)</b>
 --------------------------------------
-🎯 <b>特码命中率</b>: <code>${pnl.specialHitRate}%</code> (3码复式模式)
-🎲 <b>平码平均命中</b>: <code>${pnl.avgRedHits} 码 / 期</code>
+📏 <b>大小命中率</b>: <code>${pnl.sizeHitRate}%</code> (赔率 1.95)
+🎲 <b>单双命中率</b>: <code>${pnl.parityHitRate}%</code> (赔率 1.95)
+🎨 <b>波色命中率</b>: <code>${pnl.colorHitRate}%</code> (红2.75 / 蓝绿2.98)
+🎯 <b>三项全中(大满贯)</b>: <b>${pnl.allThreeHits} 期 🔥</b>
 🏆 <b>历史最长连红</b>: <b>${pnl.maxStreak} 连红 🔥</b>
-🔥 <b>近50期极热号码</b>: <code>${hotStr}</code>
-❄️ <b>近50期极冷号码</b>: <code>${coldStr}</code>
 --------------------------------------
-🔴 <b>红/蓝/绿波占比</b>: ${stats.waveDistribution.redRatio}% / ${stats.waveDistribution.blueRatio}% / ${stats.waveDistribution.greenRatio}%
-💡 <i>算法模型根据最新 50 期开奖动态更新。</i>
+💡 <i>注：特码开出 49 时，大小单双打和退本金。算法模型随每期开奖自动更新。</i>
 `.trim();
     await sendTg(msg);
     return;

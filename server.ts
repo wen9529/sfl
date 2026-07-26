@@ -124,8 +124,9 @@ async function startServer() {
 <b>算法</b>: ${pred.algorithmName}
 <b>置信度</b>: <b>${pred.confidence}% 🔥</b>
 --------------------------------------
-🎯 <b>推荐平码</b>: <code>${pred.formattedReds.join(" ")}</code>
-💎 <b>推荐特码</b>: <b>[ ${pred.formattedBlue} ]</b> (${pred.specialZodiac} / ${pred.specialWave})
+📏 <b>大小预测</b>: <b>【 ${pred.sizePred} 】</b> (赔率 1.95)
+🎲 <b>单双预测</b>: <b>【 ${pred.parityPred} 】</b> (赔率 1.95)
+🎨 <b>波色预测</b>: <b>【 ${pred.colorPred} 】</b> (赔率 ${pred.colorOdds})
 --------------------------------------
 💡 <b>规律依据</b>: ${pred.rationale}
 `.trim();

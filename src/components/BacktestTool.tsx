@@ -78,32 +78,30 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
       </div>
 
       {/* Input Ticket Area */}
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+      <div className="mt-5 bg-slate-950/60 p-4 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <label className="text-xs font-semibold text-rose-400 mb-1.5 block">
-            平码 6个号 (以空格或逗号分隔)：
-          </label>
-          <input
-            type="text"
-            value={customReds}
-            onChange={(e) => setCustomReds(e.target.value)}
-            placeholder="如: 20 40 23 09 27 14"
-            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-rose-500"
-          />
+          <h3 className="text-sm font-bold text-slate-200">50期算法模型下注回测规程</h3>
+          <p className="text-xs text-slate-400 mt-1">
+            下注规则：每期对【大小】(1.95)、【单双】(1.95)、【波色】(红2.75/蓝绿2.98) 各投注 100 USDT (单期 300 USDT)。开 49 时大小单双退本金。
+          </p>
         </div>
-
-        <div>
-          <label className="text-xs font-semibold text-indigo-400 mb-1.5 block">
-            特码 1个号 (以空格或逗号分隔)：
-          </label>
-          <input
-            type="text"
-            value={customBlues}
-            onChange={(e) => setCustomBlues(e.target.value)}
-            placeholder="如: 18"
-            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
-          />
-        </div>
+        <button
+          onClick={handleRunBacktest}
+          disabled={isSimulating}
+          className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg shadow-cyan-950/50 flex items-center justify-center gap-2 transition-all disabled:opacity-50 whitespace-nowrap"
+        >
+          {isSimulating ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              回测运算中...
+            </>
+          ) : (
+            <>
+              <PlayCircle className="w-4 h-4" />
+              开启50期盈亏回测
+            </>
+          )}
+        </button>
       </div>
 
       {/* Summary Results */}
@@ -111,30 +109,30 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
         <div className="mt-6 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <div className="text-xs text-slate-400 mb-1">测试期数</div>
+              <div className="text-xs text-slate-400 mb-1">回测总期数</div>
               <div className="text-lg font-bold text-slate-200 font-mono">
-                {summary.totalDrawsTested} 期
+                {summary.totalRounds} 期
               </div>
             </div>
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <div className="text-xs text-slate-400 mb-1">综合中奖率</div>
-              <div className="text-lg font-bold text-emerald-400 font-mono">
-                {summary.winRatePercent}%
-              </div>
-            </div>
-
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <div className="text-xs text-slate-400 mb-1">总投注成本</div>
+              <div className="text-xs text-slate-400 mb-1">累计总下注</div>
               <div className="text-lg font-bold text-slate-300 font-mono">
-                ¥{summary.totalCost}
+                ${summary.totalBet.toLocaleString()} USDT
               </div>
             </div>
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <div className="text-xs text-slate-400 mb-1">中奖总奖金</div>
+              <div className="text-xs text-slate-400 mb-1">累计总派彩</div>
               <div className="text-lg font-bold text-amber-400 font-mono">
-                ¥{summary.totalPrize.toLocaleString()}
+                ${summary.totalPayout.toLocaleString()} USDT
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+              <div className="text-xs text-slate-400 mb-1">净盈亏 (ROI)</div>
+              <div className="text-lg font-bold text-emerald-400 font-mono">
+                +${summary.netProfit.toLocaleString()} ({summary.roi}%)
               </div>
             </div>
           </div>
@@ -142,31 +140,31 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
           {/* Winning Breakdown List */}
           <div className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
             <h4 className="font-bold text-slate-200 border-b border-slate-800 pb-2 mb-2 flex items-center justify-between">
-              <span>奖等分项分布详情</span>
+              <span>50 期形态命中与连红详情</span>
               <span className="text-slate-400 font-normal">
-                返奖倍数: <strong className="text-cyan-400">{summary.netReturnRatio}x</strong>
+                最长连红: <strong className="text-cyan-400">{summary.maxStreak} 连红 🔥</strong>
               </span>
             </h4>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-300">
               <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-                🥇 一等奖: <strong className="text-amber-400 ml-1">{summary.winsLevel1} 次</strong>
+                📏 大小命中率: <strong className="text-amber-400 ml-1">{summary.sizeHitRate}%</strong>
               </div>
               <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-                🥈 二等奖: <strong className="text-amber-300 ml-1">{summary.winsLevel2} 次</strong>
+                🎲 单双命中率: <strong className="text-amber-300 ml-1">{summary.parityHitRate}%</strong>
               </div>
               <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-                🥉 三等奖: <strong className="text-emerald-400 ml-1">{summary.winsLevel3} 次</strong>
+                🎨 波色命中率: <strong className="text-emerald-400 ml-1">{summary.colorHitRate}%</strong>
               </div>
               <div className="bg-slate-900 p-2.5 rounded border border-slate-800">
-                🎗️ 小奖/末等奖: <strong className="text-cyan-400 ml-1">{summary.winsLevel4Plus} 次</strong>
+                🎯 三项全中(大满贯): <strong className="text-cyan-400 ml-1">{summary.allThreeHits} 期</strong>
               </div>
             </div>
           </div>
         </div>
       ) : (
         <div className="mt-8 text-center py-8 text-slate-500 text-xs">
-          点击“立即开启回测演算”，验证选号组合在历史开奖中的实际命中绩效。
+          点击“开启50期盈亏回测”，验证预测算法在最新50期开奖中的模拟下注收益率。
         </div>
       )}
     </div>

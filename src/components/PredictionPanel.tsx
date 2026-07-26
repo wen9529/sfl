@@ -84,9 +84,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
   };
 
   const handleCopyNumbers = (pred: PredictionResult) => {
-    const redStr = pred.redBalls.map(n => (n < 10 && config.redMax > 9 ? `0${n}` : `${n}`)).join(' ');
-    const blueStr = pred.blueBalls.length > 0 ? ` + ${pred.blueBalls.map(n => (n < 10 ? `0${n}` : `${n}`)).join(' ')}` : '';
-    const fullStr = `[${config.shortName}预测 - ${pred.algorithmName}] 红球: ${redStr}${blueStr}`;
+    const fullStr = `[${config.shortName}预测 - ${pred.algorithmName}] 大小: ${pred.sizePred} (1.95) | 单双: ${pred.parityPred} (1.95) | 波色: ${pred.colorPred} (${pred.colorOdds})`;
 
     navigator.clipboard.writeText(fullStr);
     setCopiedId(pred.id);
@@ -233,58 +231,27 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* Balls Display */}
-                  <div className="my-5 flex flex-wrap items-center gap-2 justify-center bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
-                    {/* 6 Regular Balls */}
-                    {pred.redBalls.map((num, idx) => {
-                      const wave = getWaveColor(num);
-                      const bgClass =
-                        wave === 'red'
-                          ? 'bg-gradient-to-tr from-red-700 via-rose-600 to-rose-400 border-rose-300/40'
-                          : wave === 'blue'
-                          ? 'bg-gradient-to-tr from-blue-700 via-sky-600 to-indigo-400 border-sky-300/40'
-                          : 'bg-gradient-to-tr from-emerald-700 via-emerald-600 to-teal-400 border-emerald-300/40';
-                      return (
-                        <div key={`red-${idx}`} className="flex flex-col items-center gap-1">
-                          <div
-                            className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full text-white font-bold text-sm sm:text-base flex items-center justify-center shadow-md border ${bgClass}`}
-                          >
-                            {num < 10 ? `0${num}` : num}
-                          </div>
-                          <span className="text-[10px] text-slate-400">
-                            {getZodiacByNum(num)}·{getWaveLabel(wave)[0]}
-                          </span>
-                        </div>
-                      );
-                    })}
-
-                    <div className="flex flex-col items-center justify-center px-1">
-                      <span className="text-xs font-bold text-amber-400">+</span>
-                      <span className="text-[9px] text-amber-400 uppercase">特码</span>
+                  {/* Size, Parity, Wave Display */}
+                  <div className="my-5 grid grid-cols-3 gap-2 text-center bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
+                    <div className="flex flex-col items-center justify-center bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-400 mb-0.5">大小预测</span>
+                      <span className="text-xl font-black text-amber-400">【 {pred.sizePred} 】</span>
+                      <span className="text-[10px] text-emerald-400 mt-0.5 font-mono">赔率 {pred.sizeOdds}</span>
                     </div>
 
-                    {/* Special Ball */}
-                    {pred.blueBalls.map((num, idx) => {
-                      const wave = getWaveColor(num);
-                      const bgClass =
-                        wave === 'red'
-                          ? 'bg-gradient-to-tr from-red-700 via-rose-600 to-rose-400 border-rose-300/40'
-                          : wave === 'blue'
-                          ? 'bg-gradient-to-tr from-blue-700 via-sky-600 to-indigo-400 border-sky-300/40'
-                          : 'bg-gradient-to-tr from-emerald-700 via-emerald-600 to-teal-400 border-emerald-300/40';
-                      return (
-                        <div key={`blue-${idx}`} className="flex flex-col items-center gap-1">
-                          <div
-                            className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full text-white font-extrabold text-base sm:text-lg flex items-center justify-center shadow-lg border-2 ring-2 ring-amber-400/40 ${bgClass}`}
-                          >
-                            {num < 10 ? `0${num}` : num}
-                          </div>
-                          <span className="text-[10px] text-amber-300 font-bold bg-amber-500/20 px-1 rounded border border-amber-500/30">
-                            {getZodiacByNum(num)}·{getWaveLabel(wave)}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    <div className="flex flex-col items-center justify-center bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-400 mb-0.5">单双预测</span>
+                      <span className="text-xl font-black text-rose-400">【 {pred.parityPred} 】</span>
+                      <span className="text-[10px] text-emerald-400 mt-0.5 font-mono">赔率 {pred.parityOdds}</span>
+                    </div>
+
+                    <div className="flex flex-col items-center justify-center bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-400 mb-0.5">波色预测</span>
+                      <span className={`text-xl font-black ${pred.colorPred === '红波' ? 'text-red-400' : pred.colorPred === '蓝波' ? 'text-sky-400' : 'text-emerald-400'}`}>
+                        【 {pred.colorPred} 】
+                      </span>
+                      <span className="text-[10px] text-emerald-400 mt-0.5 font-mono">赔率 {pred.colorOdds}</span>
+                    </div>
                   </div>
 
                   {/* Rationale & Tags */}

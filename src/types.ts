@@ -59,25 +59,33 @@ export interface PredictionResult {
   id: string;
   algorithm: 'frequency' | 'omission' | 'markov' | 'montecarlo' | 'ai' | 'custom';
   algorithmName: string;
-  redBalls: number[];
-  blueBalls: number[];
+  sizePred: '大' | '小';
+  parityPred: '单' | '双';
+  colorPred: '红波' | '蓝波' | '绿波';
+  sizeOdds: number;
+  parityOdds: number;
+  colorOdds: number;
   confidenceScore: number; // 0 - 100
   rationale: string;
   tags: string[];
   createdAt: string;
+  // Optional Legacy fields for ball displays
+  redBalls?: number[];
+  blueBalls?: number[];
 }
 
 export interface BacktestSummary {
   totalDrawsTested: number;
-  totalTickets: number;
-  winsLevel1: number;
-  winsLevel2: number;
-  winsLevel3: number;
-  winsLevel4Plus: number;
-  winRatePercent: number;
-  totalCost: number;
-  totalPrize: number;
-  netReturnRatio: number;
+  totalRounds: number;
+  totalBet: number;
+  totalPayout: number;
+  netProfit: number;
+  roi: number;
+  sizeHitRate: number;
+  parityHitRate: number;
+  colorHitRate: number;
+  allThreeHits: number;
+  maxStreak: number;
 }
 
 export interface FilterOptions {
