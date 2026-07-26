@@ -25,7 +25,7 @@ if (file_exists(__DIR__ . '/.env')) {
 return [
     // Telegram Bot 配置
     'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '8902856799:AAGh69-F_ht5nvd_roAWfkmOxh8xJqzxEXk',
-    'telegram_chat_id'   => getenv('TELEGRAM_CHAT_ID') ?: '7634524866',
+    'telegram_chat_id'   => getenv('TELEGRAM_CHAT_ID') ?: '@sanfencc66',
     'telegram_admin_id'  => getenv('TELEGRAM_ADMIN_ID') ?: '7634524866',
     
     // Gemini API Key

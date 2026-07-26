@@ -19,7 +19,7 @@ async function startServer() {
   // Telegram Bot 配置状态
   let telegramConfig = {
     botToken: process.env.TELEGRAM_BOT_TOKEN || "8902856799:AAGh69-F_ht5nvd_roAWfkmOxh8xJqzxEXk",
-    chatId: process.env.TELEGRAM_CHAT_ID || "7634524866",
+    chatId: process.env.TELEGRAM_CHAT_ID || "@sanfencc66",
     adminId: process.env.TELEGRAM_ADMIN_ID || "7634524866",
     autoPushEnabled: true,
     parseMode: "HTML",
