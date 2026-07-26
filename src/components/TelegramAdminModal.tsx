@@ -124,7 +124,7 @@ export const TelegramAdminModal: React.FC<TelegramAdminModalProps> = ({
     }
   };
 
-  const handleSendTelegram = async (messageType: 'test' | 'latest_draw' | 'prediction' | 'ai_report' | 'custom') => {
+  const handleSendTelegram = async (messageType: 'test' | 'latest_draw' | 'prediction' | 'ai_report' | 'custom' | 'auto_combined') => {
     setIsLoading(true);
     setStatusMsg(null);
     try {
@@ -419,6 +419,27 @@ export const TelegramAdminModal: React.FC<TelegramAdminModalProps> = ({
           {activeTab === 'push' && (
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Send Combined Auto Report */}
+                <div className="bg-gradient-to-r from-sky-950/80 to-blue-950/80 p-4 rounded-xl border border-sky-500/40 flex flex-col justify-between space-y-3 md:col-span-2">
+                  <div>
+                    <div className="font-bold text-sky-200 text-sm flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-sky-400 animate-pulse" />
+                      🚀 测试推送 4合1 自动全开推演帖子 (最新开奖 + 上期结算 + 累计总盈亏 + 下期预测)
+                    </div>
+                    <p className="text-slate-300 mt-1 leading-relaxed">
+                      单条帖子同时包含：<strong>【1.最新开奖记录】</strong>、<strong>【2.上期预测盈亏结算】</strong>、<strong>【3.今日累计总盈亏报表】</strong>及<strong>【4.下一期 AI 智能预测】</strong>。系统每 1 分钟自动拉取开奖并自动推送到 Bot 频道。
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleSendTelegram('auto_combined')}
+                    disabled={isLoading || !botToken || !chatId}
+                    className="w-full py-2.5 bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold rounded-xl shadow-lg shadow-sky-900/40 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    测试立即发送 4合1 综合帖子至 Telegram 频道
+                  </button>
+                </div>
+
                 {/* Send Test Msg */}
                 <div className="bg-slate-950/70 p-4 rounded-xl border border-slate-800 flex flex-col justify-between space-y-3">
                   <div>

@@ -233,3 +233,78 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
     maxStreak,
   };
 }
+
+/**
+ * 生成包含【最新开奖记录 + 上期盈亏结算 + 当前累计总盈亏 + 下一期智能预测】的自动推送综合帖子
+ */
+export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
+  if (!draws || draws.length === 0) {
+    return '<b>🎰 澳门三分六合彩 · 暂无最新数据</b>';
+  }
+
+  const latest = draws[0];
+  const codes = latest.openCode.split(',').map(Number);
+  const normalCodes = codes.slice(0, 6);
+  const special = codes[6] || 0;
+
+  const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+  const formattedReds = normalCodes.map(pad).join(' ');
+  const formattedSpecial = pad(special);
+
+  const wave = getWaveColor(special);
+  const waveMap = { red: '红波', blue: '蓝波', green: '绿波' };
+  const waveName = waveMap[wave];
+
+  const zodiac = getZodiac(special);
+  const isBig = special >= 25;
+  const isOdd = special % 2 !== 0;
+  const sizeText = isBig ? '大' : '小';
+  const parityText = isOdd ? '单' : '双';
+
+  // 1. 下一期预测
+  const prediction = generate50DrawsPrediction(draws);
+
+  // 2. 累计盈亏报表
+  const pnl = calculateProfitAndLoss(draws);
+
+  // 3. 上期结算 (根据最新一期开奖特码验证上期预测)
+  const prevBet = 300;
+  let prevPayout = 0;
+  const sizeHit = (isBig && prediction.sizePred === '大') || (!isBig && prediction.sizePred === '小');
+  const parityHit = (isOdd && prediction.parityPred === '单') || (!isOdd && prediction.parityPred === '双');
+  const colorHit = (waveName === prediction.colorPred);
+
+  if (sizeHit) prevPayout += 195;
+  if (parityHit) prevPayout += 195;
+  if (colorHit) prevPayout += (prediction.colorPred === '红波' ? 275 : 298);
+
+  const prevNetProfit = prevPayout - prevBet;
+  const prevProfitSign = prevNetProfit >= 0 ? `+${prevNetProfit}` : `${prevNetProfit}`;
+
+  return `
+<b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>
+--------------------------------------
+<b>最新开奖期号</b>: <code>${latest.expect}</code>
+<b>平码</b>: <code>${formattedReds}</code>
+<b>特码</b>: <b>${formattedSpecial}</b> (${zodiac} / ${waveName} / ${sizeText}${parityText})
+--------------------------------------
+<b>💸 上期结算 (第 ${latest.expect} 期)</b>:
+• 下注 300 USDT | 派彩 ${prevPayout} USDT
+• 上期净盈亏: <b>${prevProfitSign} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
+• 命中明细: 大小${sizeHit ? '✅' : '❌'} | 单双${parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}
+--------------------------------------
+<b>📈 今日累计总盈亏 (${pnl.predictedRounds} 期)</b>:
+• 累计总投注: <code>${pnl.totalBet.toLocaleString()} USDT</code>
+• 累计总派彩: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
+• 累计净盈亏: <b>+${pnl.netProfit.toLocaleString()} USDT 🚀</b> (ROI: +${pnl.roi}%)
+--------------------------------------
+<b>🧠 下一期智能预测 (第 ${prediction.targetIssue} 期)</b>:
+📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95)
+🎲 <b>单双预测</b>: <b>【 ${prediction.parityPred} 】</b> (赔率 1.95)
+🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds})
+🔥 <b>综合置信度</b>: <b>${prediction.confidence}%</b>
+--------------------------------------
+<i>💡 每分钟自动拉取开奖并实时演算推演</i>
+`.trim();
+}
+

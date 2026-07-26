@@ -4,7 +4,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { generate50MacauDraws, MacauDrawItem } from "./src/server/lotteryEngine";
-import { analyze50Draws, generate50DrawsPrediction, calculateProfitAndLoss } from "./src/server/statsAlgorithm";
+import { analyze50Draws, generate50DrawsPrediction, calculateProfitAndLoss, generateAutomatedPushReport } from "./src/server/statsAlgorithm";
 import { processTelegramMessage } from "./src/server/telegramBot";
 
 async function startServer() {
@@ -15,11 +15,6 @@ async function startServer() {
 
   // 内存缓存 50 期开奖记录
   let current50Draws: MacauDrawItem[] = generate50MacauDraws();
-
-  // 每 3 分钟自动刷新追加一期
-  setInterval(() => {
-    current50Draws = generate50MacauDraws();
-  }, 180000);
 
   // Telegram Bot 配置状态
   let telegramConfig = {
@@ -50,6 +45,37 @@ async function startServer() {
     });
     if (telegramLogs.length > 50) telegramLogs.pop();
   };
+
+  // 每 1 分钟自动拉取最新开奖记录 + 自动预测下一期 + 自动推送包含[最新开奖+上期结算+累计总盈亏+下一期预测]的复合帖子
+  setInterval(async () => {
+    current50Draws = generate50MacauDraws();
+
+    if (telegramConfig.autoPushEnabled && telegramConfig.botToken && telegramConfig.chatId) {
+      try {
+        const reportText = generateAutomatedPushReport(current50Draws);
+        const tgRes = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: telegramConfig.chatId,
+            text: reportText,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const tgData = await tgRes.json();
+        if (tgData.ok) {
+          addTelegramLog("每分钟自动推送", "success", `定时推送到 ${telegramConfig.chatId} 成功 (最新开奖+下期预测+盈亏)`);
+        } else {
+          addTelegramLog("每分钟自动推送", "error", "定时推送失败", tgData.description);
+        }
+      } catch (err: any) {
+        addTelegramLog("每分钟自动推送", "error", "定时推送网络异常", err.message);
+      }
+    }
+  }, 60000); // 1分钟 (60000ms)
+
 
   // API 1: 获取 Telegram 配置与日志
   app.get("/api/telegram/config", (req, res) => {
@@ -115,6 +141,8 @@ async function startServer() {
 <b>推送渠道</b>: ${targetChatId}
 <b>接口状态</b>: 🟢 正常通畅
 `.trim();
+    } else if (messageType === "auto_combined") {
+      formattedText = generateAutomatedPushReport(current50Draws);
     } else if (messageType === "prediction") {
       const pred = generate50DrawsPrediction(current50Draws);
       formattedText = `

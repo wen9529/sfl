@@ -228,3 +228,78 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         ];
     }
 }
+
+if (!function_exists('generateAutomatedPushReportPHP')) {
+    /**
+     * 生成包含【最新开奖记录 + 上期盈亏结算 + 当前累计总盈亏 + 下一期智能预测】的自动推送综合帖子
+     */
+    function generateAutomatedPushReportPHP($draws = null) {
+        if (empty($draws)) {
+            return "<b>🎰 澳门三分六合彩 · 暂无最新数据</b>";
+        }
+
+        $latest = $draws[0];
+        $codes = array_map('intval', explode(',', $latest['openCode']));
+        $normalCodes = array_slice($codes, 0, 6);
+        $special = isset($codes[6]) ? $codes[6] : 0;
+
+        $pad = function($n) { return $n < 10 ? "0{$n}" : "{$n}"; };
+        $formattedReds = implode(' ', array_map($pad, $normalCodes));
+        $formattedSpecial = $pad($special);
+
+        $wave = getWaveColorPHP($special);
+        $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
+        $waveName = isset($waveMap[$wave]) ? $waveMap[$wave] : '红波';
+
+        $zodiac = getZodiacPHP($special);
+        $isBig = ($special >= 25);
+        $isOdd = ($special % 2 !== 0);
+        $sizeText = $isBig ? '大' : '小';
+        $parityText = $isOdd ? '单' : '双';
+
+        // 1. 下一期预测
+        $prediction = generate50DrawsPredictionPHP($draws);
+
+        // 2. 累计盈亏报表
+        $pnl = calculateProfitAndLossPHP($draws);
+
+        // 3. 上期结算
+        $prevBet = 300;
+        $prevPayout = 0;
+        $sizeHit = ($isBig && $prediction['sizePred'] === '大') || (!$isBig && $prediction['sizePred'] === '小');
+        $parityHit = ($isOdd && $prediction['parityPred'] === '单') || (!$isOdd && $prediction['parityPred'] === '双');
+        $colorHit = ($waveName === $prediction['colorPred']);
+
+        if ($sizeHit) $prevPayout += 195;
+        if ($parityHit) $prevPayout += 195;
+        if ($colorHit) $prevPayout += ($prediction['colorPred'] === '红波' ? 275 : 298);
+
+        $prevNetProfit = $prevPayout - $prevBet;
+        $prevProfitSign = $prevNetProfit >= 0 ? "+{$prevNetProfit}" : "{$prevNetProfit}";
+
+        return "<b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>\n"
+             . "--------------------------------------\n"
+             . "<b>最新开奖期号</b>: <code>{$latest['expect']}</code>\n"
+             . "<b>平码</b>: <code>{$formattedReds}</code>\n"
+             . "<b>特码</b>: <b>{$formattedSpecial}</b> ({$zodiac} / {$waveName} / {$sizeText}{$parityText})\n"
+             . "--------------------------------------\n"
+             . "<b>💸 上期结算 (第 {$latest['expect']} 期)</b>:\n"
+             . "• 下注 300 USDT | 派彩 {$prevPayout} USDT\n"
+             . "• 上期净盈亏: <b>{$prevProfitSign} USDT " . ($prevNetProfit >= 0 ? "📈" : "📉") . "</b>\n"
+             . "• 命中明细: 大小" . ($sizeHit ? "✅" : "❌") . " | 单双" . ($parityHit ? "✅" : "❌") . " | 波色" . ($colorHit ? "✅" : "❌") . "\n"
+             . "--------------------------------------\n"
+             . "<b>📈 今日累计总盈亏 ({$pnl['predictedRounds']} 期)</b>:\n"
+             . "• 累计总投注: <code>" . number_format($pnl['totalBet']) . " USDT</code>\n"
+             . "• 累计总派彩: <code>" . number_format($pnl['totalPayout']) . " USDT</code>\n"
+             . "• 累计净盈亏: <b>+" . number_format($pnl['netProfit']) . " USDT 🚀</b> (ROI: +{$pnl['roi']}%)\n"
+             . "--------------------------------------\n"
+             . "<b>🧠 下一期智能预测 (第 {$prediction['targetIssue']} 期)</b>:\n"
+             . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95)\n"
+             . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95)\n"
+             . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']})\n"
+             . "🔥 <b>综合置信度</b>: <b>{$prediction['confidence']}%</b>\n"
+             . "--------------------------------------\n"
+             . "<i>💡 每分钟自动拉取开奖并实时演算推演</i>";
+    }
+}
+
