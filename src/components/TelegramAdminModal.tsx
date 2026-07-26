@@ -338,7 +338,7 @@ export const TelegramAdminModal: React.FC<TelegramAdminModalProps> = ({
                     type="text"
                     value={chatId}
                     onChange={(e) => setChatId(e.target.value)}
-                    placeholder="例如: @macau_marksix 或 -1001987654321 或个人数字ID"
+                    placeholder="例如: @sanfencc66 或 -1001987654321 或个人数字ID"
                     className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 font-mono focus:outline-none focus:border-sky-500"
                   />
                   <p className="text-[11px] text-slate-400 mt-1">

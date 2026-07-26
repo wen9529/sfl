@@ -197,12 +197,12 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         $predictedRounds = max(0, min($totalRounds, $dayDrawNum - 50)); // 已预测期数 (51期对应1期)
         $isCompleted = ($dayDrawNum >= 480);
 
-        $betPerRound = 300; // 每期 3 注共 300 USDT
+        $betPerRound = 3; // 每期 3 注共 3 USDT (单注 1 USDT)
         $totalBet = $predictedRounds * $betPerRound;
 
         // 按全天 430 期标准表现折算当前累计派彩与盈亏
-        $totalPayout = intval(round($predictedRounds * 390.095));
-        $netProfit = $totalPayout - $totalBet;
+        $totalPayout = round($predictedRounds * 3.90095, 2);
+        $netProfit = round($totalPayout - $totalBet, 2);
         $roi = $totalBet > 0 ? round(($netProfit / $totalBet) * 100, 2) : 0;
 
         $sizeHits = intval(round($predictedRounds * 0.625));
@@ -264,17 +264,18 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
         $pnl = calculateProfitAndLossPHP($draws);
 
         // 3. 上期结算
-        $prevBet = 300;
+        $prevBet = 3;
         $prevPayout = 0;
         $sizeHit = ($isBig && $prediction['sizePred'] === '大') || (!$isBig && $prediction['sizePred'] === '小');
         $parityHit = ($isOdd && $prediction['parityPred'] === '单') || (!$isOdd && $prediction['parityPred'] === '双');
         $colorHit = ($waveName === $prediction['colorPred']);
 
-        if ($sizeHit) $prevPayout += 195;
-        if ($parityHit) $prevPayout += 195;
-        if ($colorHit) $prevPayout += ($prediction['colorPred'] === '红波' ? 275 : 298);
+        if ($sizeHit) $prevPayout += 1.95;
+        if ($parityHit) $prevPayout += 1.95;
+        if ($colorHit) $prevPayout += ($prediction['colorPred'] === '红波' ? 2.75 : 2.98);
 
-        $prevNetProfit = $prevPayout - $prevBet;
+        $prevPayout = round($prevPayout, 2);
+        $prevNetProfit = round($prevPayout - $prevBet, 2);
         $prevProfitSign = $prevNetProfit >= 0 ? "+{$prevNetProfit}" : "{$prevNetProfit}";
 
         return "<b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>\n"
@@ -284,7 +285,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "<b>特码</b>: <b>{$formattedSpecial}</b> ({$zodiac} / {$waveName} / {$sizeText}{$parityText})\n"
              . "--------------------------------------\n"
              . "<b>💸 上期结算 (第 {$latest['expect']} 期)</b>:\n"
-             . "• 下注 300 USDT | 派彩 {$prevPayout} USDT\n"
+             . "• 下注 3 USDT | 派彩 {$prevPayout} USDT\n"
              . "• 上期净盈亏: <b>{$prevProfitSign} USDT " . ($prevNetProfit >= 0 ? "📈" : "📉") . "</b>\n"
              . "• 命中明细: 大小" . ($sizeHit ? "✅" : "❌") . " | 单双" . ($parityHit ? "✅" : "❌") . " | 波色" . ($colorHit ? "✅" : "❌") . "\n"
              . "--------------------------------------\n"
@@ -299,6 +300,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']})\n"
              . "🔥 <b>综合置信度</b>: <b>{$prediction['confidence']}%</b>\n"
              . "--------------------------------------\n"
+             . "📢 <b>官方频道</b>: https://t.me/sanfencc66\n"
              . "<i>💡 每分钟自动拉取开奖并实时演算推演</i>";
     }
 }

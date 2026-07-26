@@ -273,7 +273,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $msgText = "{$titleText}\n"
                      . "--------------------------------------\n"
                      . "{$statusText}\n"
-                     . "<b>累计总下注</b>: <code>" . number_format($pnl['totalBet']) . " USDT</code> (300/期)\n"
+                     . "<b>累计总下注</b>: <code>" . number_format($pnl['totalBet']) . " USDT</code> (3 USDT/期)\n"
                      . "<b>累计总派彩</b>: <code>" . number_format($pnl['totalPayout']) . " USDT</code>\n"
                      . "<b>累计净盈亏</b>: <b>+" . number_format($pnl['netProfit']) . " USDT 📈</b>\n"
                      . "<b>投资回报率</b>: <b>+{$pnl['roi']}% 🔥 (ROI)</b>\n"
@@ -284,6 +284,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "🎯 <b>三项全中(大满贯)</b>: <b>{$pnl['allThreeHits']} 期 🔥</b>\n"
                      . "🏆 <b>历史最长连红</b>: <b>{$pnl['maxStreak']} 连红 🔥</b>\n"
                      . "--------------------------------------\n"
+                     . "📢 <b>官方频道</b>: https://t.me/sanfencc66\n"
                      . "💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [

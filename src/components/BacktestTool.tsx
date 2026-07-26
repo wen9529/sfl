@@ -82,7 +82,7 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
         <div>
           <h3 className="text-sm font-bold text-slate-200">430期算法模型下注回测规程</h3>
           <p className="text-xs text-slate-400 mt-1">
-            下注规则：每期对【大小】(1.95)、【单双】(1.95)、【波色】(红2.75/蓝绿2.98) 各投注 100 USDT (单期 300 USDT)。开 49 时大小单双退本金。前 50 期积累为算法基准，后 430 期预测结算。
+            下注规则：每期对【大小】(1.95)、【单双】(1.95)、【波色】(红2.75/蓝绿2.98) 各投注 1 USDT (单期 3 USDT)。开 49 时大小单双退本金。前 50 期积累为算法基准，后 430 期预测结算。
           </p>
         </div>
         <button

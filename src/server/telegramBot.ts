@@ -257,7 +257,7 @@ ${lines.join('\n\n')}
 ${titleText}
 --------------------------------------
 ${statusText}
-<b>累计总下注</b>: <code>${pnl.totalBet.toLocaleString()} USDT</code> (300/期)
+<b>累计总下注</b>: <code>${pnl.totalBet.toLocaleString()} USDT</code> (3 USDT/期)
 <b>累计总派彩</b>: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
 <b>累计净盈亏</b>: <b>+${pnl.netProfit.toLocaleString()} USDT 📈</b>
 <b>投资回报率</b>: <b>+${pnl.roi}% 🔥 (ROI)</b>
@@ -268,6 +268,7 @@ ${statusText}
 🎯 <b>三项全中(大满贯)</b>: <b>${pnl.allThreeHits} 期 🔥</b>
 🏆 <b>历史最长连红</b>: <b>${pnl.maxStreak} 连红 🔥</b>
 --------------------------------------
+📢 <b>官方频道</b>: https://t.me/sanfencc66
 💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
 `.trim();
 

@@ -203,12 +203,12 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
   const predictedRounds = Math.max(0, Math.min(totalRounds, dayDrawNum - 50)); // 已预测期数 (51期对应1期)
   const isCompleted = dayDrawNum >= 480;
 
-  const betPerRound = 300; // 每期 3 注共 300 USDT
+  const betPerRound = 3; // 每期 3 注共 3 USDT (单注 1 USDT)
   const totalBet = predictedRounds * betPerRound;
 
   // 按全天 430 期标准表现折算当前累计派彩与盈亏
-  const totalPayout = Math.round(predictedRounds * 390.095);
-  const netProfit = totalPayout - totalBet;
+  const totalPayout = Number((predictedRounds * 3.90095).toFixed(2));
+  const netProfit = Number((totalPayout - totalBet).toFixed(2));
   const roi = totalBet > 0 ? Number(((netProfit / totalBet) * 100).toFixed(2)) : 0;
 
   const sizeHits = Math.round(predictedRounds * 0.625);
@@ -268,17 +268,18 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   const pnl = calculateProfitAndLoss(draws);
 
   // 3. 上期结算 (根据最新一期开奖特码验证上期预测)
-  const prevBet = 300;
+  const prevBet = 3;
   let prevPayout = 0;
   const sizeHit = (isBig && prediction.sizePred === '大') || (!isBig && prediction.sizePred === '小');
   const parityHit = (isOdd && prediction.parityPred === '单') || (!isOdd && prediction.parityPred === '双');
   const colorHit = (waveName === prediction.colorPred);
 
-  if (sizeHit) prevPayout += 195;
-  if (parityHit) prevPayout += 195;
-  if (colorHit) prevPayout += (prediction.colorPred === '红波' ? 275 : 298);
+  if (sizeHit) prevPayout += 1.95;
+  if (parityHit) prevPayout += 1.95;
+  if (colorHit) prevPayout += (prediction.colorPred === '红波' ? 2.75 : 2.98);
 
-  const prevNetProfit = prevPayout - prevBet;
+  prevPayout = Number(prevPayout.toFixed(2));
+  const prevNetProfit = Number((prevPayout - prevBet).toFixed(2));
   const prevProfitSign = prevNetProfit >= 0 ? `+${prevNetProfit}` : `${prevNetProfit}`;
 
   return `
@@ -289,7 +290,7 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 <b>特码</b>: <b>${formattedSpecial}</b> (${zodiac} / ${waveName} / ${sizeText}${parityText})
 --------------------------------------
 <b>💸 上期结算 (第 ${latest.expect} 期)</b>:
-• 下注 300 USDT | 派彩 ${prevPayout} USDT
+• 下注 3 USDT | 派彩 ${prevPayout} USDT
 • 上期净盈亏: <b>${prevProfitSign} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
 • 命中明细: 大小${sizeHit ? '✅' : '❌'} | 单双${parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}
 --------------------------------------
@@ -304,6 +305,7 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds})
 🔥 <b>综合置信度</b>: <b>${prediction.confidence}%</b>
 --------------------------------------
+📢 <b>官方频道</b>: https://t.me/sanfencc66
 <i>💡 每分钟自动拉取开奖并实时演算推演</i>
 `.trim();
 }

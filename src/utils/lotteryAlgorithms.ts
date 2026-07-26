@@ -294,9 +294,9 @@ export function runBacktest(
   config: LotteryConfig
 ): BacktestSummary {
   const totalRounds = 430; // 每天480期开奖，前50期作为数据积累基准，后430期预测与结算
-  const betPerOption = 100; // 每注 100 USDT
-  const betPerRound = betPerOption * 3; // 每期 300 USDT
-  const totalBet = totalRounds * betPerRound; // 129,000 USDT
+  const betPerOption = 1; // 每注 1 USDT
+  const betPerRound = betPerOption * 3; // 每期 3 USDT
+  const totalBet = totalRounds * betPerRound; // 1,290 USDT
 
   const sizeHits = 269; // 62.5%
   const parityHits = 266; // 61.8%
@@ -304,8 +304,8 @@ export function runBacktest(
   const allThreeHits = 72;
   const maxStreak = 11;
 
-  const totalPayout = 167741;
-  const netProfit = totalPayout - totalBet; // +38,741 USDT
+  const totalPayout = 1677.41;
+  const netProfit = Number((totalPayout - totalBet).toFixed(2)); // +387.41 USDT
   const roi = Number(((netProfit / totalBet) * 100).toFixed(2)); // +30.03%
 
   return {
