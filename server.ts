@@ -12,9 +12,9 @@ async function startServer() {
 
   // Telegram Bot Store & State (initializes from process.env / .env)
   let telegramConfig = {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
-    chatId: process.env.TELEGRAM_CHAT_ID || "",
-    adminId: process.env.TELEGRAM_ADMIN_ID || "",
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "8902856799:AAGh69-F_ht5nvd_roAWfkmOxh8xJqzxEXk",
+    chatId: process.env.TELEGRAM_CHAT_ID || "7634524866",
+    adminId: process.env.TELEGRAM_ADMIN_ID || "7634524866",
     autoPushEnabled: true,
     parseMode: "HTML",
   };
