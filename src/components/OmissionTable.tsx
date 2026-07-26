@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { DrawRecord, LotteryConfig } from '../types';
 import { calculateBallFrequencies } from '../utils/lotteryAlgorithms';
-import { Grid, Eye, AlertCircle, ArrowUpDown } from 'lucide-react';
+import { getWaveColor, getZodiacByNum, getWaveLabel } from '../data/mockLotteryData';
+import { Grid, Eye, ArrowUpDown } from 'lucide-react';
 
 interface OmissionTableProps {
   draws: DrawRecord[];
@@ -13,7 +14,7 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
   const [sortKey, setSortKey] = useState<'number' | 'count' | 'currentOmission' | 'avgOmission'>('currentOmission');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const maxBall = ballType === 'red' ? config.redMax : config.blueMax;
+  const maxBall = 49;
   const isRed = ballType === 'red';
 
   const frequencies = calculateBallFrequencies(draws, maxBall, isRed);
@@ -39,6 +40,13 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
 
   const recentDraws = draws.slice(0, 12);
 
+  const getWaveBadge = (num: number) => {
+    const wave = getWaveColor(num);
+    if (wave === 'red') return <span className="px-1.5 py-0.5 text-[10px] rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">红波</span>;
+    if (wave === 'blue') return <span className="px-1.5 py-0.5 text-[10px] rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">蓝波</span>;
+    return <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">绿波</span>;
+  };
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl text-white my-4">
       {/* Table Header Controls */}
@@ -48,57 +56,39 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
             <Grid className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-100">冷热码与冷热遗漏分布矩阵</h2>
-            <p className="text-xs text-slate-400">统计当前遗漏、历史最大遗漏与平均遗漏指标</p>
+            <h2 className="text-base font-bold text-slate-100">三分六合彩 1-49球波色生肖遗漏分布矩阵</h2>
+            <p className="text-xs text-slate-400">实时统计49个球的当前遗漏、历史最大遗漏与生肖波色属性</p>
           </div>
         </div>
 
-        {config.blueCount > 0 && (
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-            <button
-              onClick={() => setBallType('red')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                ballType === 'red' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              红球/前区 ({config.redMax}个)
-            </button>
-            <button
-              onClick={() => setBallType('blue')}
-              className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
-                ballType === 'blue' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              蓝球/后区 ({config.blueMax}个)
-            </button>
-          </div>
-        )}
+        <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+          <button
+            onClick={() => setBallType('red')}
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+              ballType === 'red' ? 'bg-rose-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            平码 (1-49)
+          </button>
+          <button
+            onClick={() => setBallType('blue')}
+            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+              ballType === 'blue' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            特码 (1-49)
+          </button>
+        </div>
       </div>
 
       {/* Grid Matrix Visualizer (Latest 12 Draws) */}
       <div className="mt-5 overflow-x-auto pb-2">
         <div className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
           <Eye className="w-3.5 h-3.5 text-rose-400" />
-          近12期{isRed ? '红球' : '蓝球'}分布轨迹矩阵:
+          近12期{isRed ? '平码' : '特码'}分布轨迹:
         </div>
 
-        <div className="min-w-[640px]">
-          {/* Header row with ball numbers */}
-          <div className="flex items-center gap-1 mb-1">
-            <div className="w-20 text-xs text-slate-500 font-mono">期号</div>
-            {Array.from({ length: maxBall }, (_, i) => {
-              const num = maxBall === 9 ? i : i + 1;
-              return (
-                <div
-                  key={num}
-                  className="flex-1 min-w-[22px] text-center text-[10px] font-mono text-slate-400 font-bold"
-                >
-                  {num < 10 && maxBall > 9 ? `0${num}` : num}
-                </div>
-              );
-            })}
-          </div>
-
+        <div className="min-w-[800px]">
           {/* Matrix Rows */}
           {recentDraws.map((d) => {
             const hitBalls = isRed ? d.redBalls : d.blueBalls;
@@ -107,27 +97,31 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
                 key={d.issue}
                 className="flex items-center gap-1 py-1 border-b border-slate-800/40 hover:bg-slate-800/30 transition-all"
               >
-                <div className="w-20 text-xs text-slate-400 font-mono">{d.issue.slice(-3)}期</div>
-                {Array.from({ length: maxBall }, (_, i) => {
-                  const num = maxBall === 9 ? i : i + 1;
+                <div className="w-24 text-xs text-slate-300 font-mono font-semibold">{d.issue.slice(-4)}期</div>
+                {Array.from({ length: 49 }, (_, i) => {
+                  const num = i + 1;
                   const isHit = hitBalls.includes(num);
+                  const wave = getWaveColor(num);
+                  const bgClass =
+                    wave === 'red'
+                      ? 'bg-rose-600'
+                      : wave === 'blue'
+                      ? 'bg-sky-600'
+                      : 'bg-emerald-600';
                   return (
                     <div
                       key={num}
-                      className="flex-1 min-w-[22px] flex items-center justify-center"
+                      className="flex-1 min-w-[18px] flex items-center justify-center"
                     >
                       {isHit ? (
                         <span
-                          className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white shadow ${
-                            isRed
-                              ? 'bg-rose-600 shadow-rose-900/40'
-                              : 'bg-indigo-600 shadow-indigo-900/40'
-                          }`}
+                          className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white shadow ${bgClass}`}
+                          title={`${num}号 (${getZodiacByNum(num)}·${getWaveLabel(wave)})`}
                         >
                           {num}
                         </span>
                       ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-800" />
+                        <span className="w-1 h-1 rounded-full bg-slate-800" />
                       )}
                     </div>
                   );
@@ -148,7 +142,7 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
                   onClick={() => handleSort('number')}
                   className="flex items-center gap-1 hover:text-white"
                 >
-                  号码 <ArrowUpDown className="w-3 h-3" />
+                  号码/生肖/波色 <ArrowUpDown className="w-3 h-3" />
                 </button>
               </th>
               <th className="py-2.5 px-3">冷热状态</th>
@@ -183,13 +177,13 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
             {sortedFreqs.map((item) => (
               <tr key={item.number} className="hover:bg-slate-800/40 transition-all">
                 <td className="py-2 px-3 font-bold font-mono">
-                  <span
-                    className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs ${
-                      isRed ? 'bg-rose-500/20 text-rose-300' : 'bg-indigo-500/20 text-indigo-300'
-                    }`}
-                  >
-                    {item.number < 10 && maxBall > 9 ? `0${item.number}` : item.number}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-xs text-white">
+                      {item.number < 10 ? `0${item.number}` : item.number}
+                    </span>
+                    <span className="text-slate-300 font-sans">{getZodiacByNum(item.number)}</span>
+                    {getWaveBadge(item.number)}
+                  </div>
                 </td>
                 <td className="py-2 px-3">
                   {item.status === 'hot' && (
@@ -232,3 +226,4 @@ export const OmissionTable: React.FC<OmissionTableProps> = ({ draws, config }) =
     </div>
   );
 };
+

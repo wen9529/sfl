@@ -1,15 +1,15 @@
-export type LotteryKind = 'ssq' | 'dlt' | 'fc3d' | 'pl3' | 'kl8';
+export type LotteryKind = 'macaujc3';
 
 export interface LotteryConfig {
   id: LotteryKind;
   name: string;
   shortName: string;
   description: string;
-  redCount: number;      // e.g., 6 for SSQ
-  redMax: number;        // e.g., 33 for SSQ
-  blueCount: number;     // e.g., 1 for SSQ
-  blueMax: number;       // e.g., 16 for SSQ
-  drawDays: string;      // e.g., "二、四、日"
+  redCount: number;      // 6 for regular balls (平码1-6)
+  redMax: number;        // 49
+  blueCount: number;     // 1 for special ball (特码)
+  blueMax: number;       // 49
+  drawDays: string;      // "每 3 分钟开奖"
   rules: {
     sumRange: [number, number];
     recommendedOddEvenRatio: string;
@@ -17,10 +17,13 @@ export interface LotteryConfig {
 }
 
 export interface DrawRecord {
-  issue: string;         // e.g. "2026088"
-  date: string;          // e.g. "2026-07-20"
-  redBalls: number[];
-  blueBalls: number[];
+  issue: string;         // e.g. "20250504348"
+  date: string;          // e.g. "2025-05-04 17:21:00"
+  redBalls: number[];    // 平码1~6 [20, 40, 23, 9, 27, 14]
+  blueBalls: number[];   // 特码 [18]
+  waves?: string[];      // ["blue", "red", "red", "blue", "green", "blue", "red"]
+  zodiacs?: string[];    // ["狗", "虎", "羊", "雞", "兔", "龍", "鼠"]
+  rawOpenCode?: string;  // "20,40,23,09,27,14,18"
   sales?: string;
   poolMoney?: string;
 }
@@ -32,6 +35,7 @@ export interface BallFrequency {
   currentOmission: number;
   maxOmission: number;
   avgOmission: number;
+  waveColor: 'red' | 'blue' | 'green';
   status: 'hot' | 'warm' | 'cold';
 }
 
@@ -42,7 +46,13 @@ export interface DrawStats {
   oddEvenRatio: string; // e.g. "4:2"
   bigSmallRatio: string; // e.g. "3:3"
   acValue: number;
-  span: number; // max red - min red
+  span: number; // max - min
+  specialBall?: number;
+  specialWave?: string;
+  specialZodiac?: string;
+  redWaveCount?: number;
+  blueWaveCount?: number;
+  greenWaveCount?: number;
 }
 
 export interface PredictionResult {
@@ -75,6 +85,7 @@ export interface FilterOptions {
   maxSum: number;
   oddCount: number | null; // e.g., 3 means 3 odd, 3 even
   bigCount: number | null; // threshold defined as > max/2
+  preferredWave?: 'all' | 'red' | 'blue' | 'green';
   mustIncludeReds: number[];
   mustExcludeReds: number[];
   allowConsecutive: boolean;
@@ -87,3 +98,4 @@ export interface Serv00DeployConfig {
   appDir: string;
   geminiKey: string;
 }
+

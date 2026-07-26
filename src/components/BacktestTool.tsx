@@ -11,10 +11,10 @@ interface BacktestToolProps {
 
 export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initialPrediction }) => {
   const [customReds, setCustomReds] = useState<string>(
-    initialPrediction ? initialPrediction.redBalls.join(' ') : '02 07 12 19 24 31'
+    initialPrediction ? initialPrediction.redBalls.join(' ') : '20 40 23 09 27 14'
   );
   const [customBlues, setCustomBlues] = useState<string>(
-    initialPrediction ? initialPrediction.blueBalls.join(' ') : '08'
+    initialPrediction ? initialPrediction.blueBalls.join(' ') : '18'
   );
 
   const [summary, setSummary] = useState<BacktestSummary | null>(null);
@@ -81,31 +81,29 @@ export const BacktestTool: React.FC<BacktestToolProps> = ({ draws, config, initi
       <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
         <div>
           <label className="text-xs font-semibold text-rose-400 mb-1.5 block">
-            红球/前区号码 ({config.redCount}个，以空格分隔)：
+            平码 6个号 (以空格或逗号分隔)：
           </label>
           <input
             type="text"
             value={customReds}
             onChange={(e) => setCustomReds(e.target.value)}
-            placeholder="如: 02 07 12 19 24 31"
+            placeholder="如: 20 40 23 09 27 14"
             className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-rose-500"
           />
         </div>
 
-        {config.blueCount > 0 && (
-          <div>
-            <label className="text-xs font-semibold text-indigo-400 mb-1.5 block">
-              蓝球/后区号码 ({config.blueCount}个，以空格分隔)：
-            </label>
-            <input
-              type="text"
-              value={customBlues}
-              onChange={(e) => setCustomBlues(e.target.value)}
-              placeholder="如: 08 15"
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-        )}
+        <div>
+          <label className="text-xs font-semibold text-indigo-400 mb-1.5 block">
+            特码 1个号 (以空格或逗号分隔)：
+          </label>
+          <input
+            type="text"
+            value={customBlues}
+            onChange={(e) => setCustomBlues(e.target.value)}
+            placeholder="如: 18"
+            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+          />
+        </div>
       </div>
 
       {/* Summary Results */}

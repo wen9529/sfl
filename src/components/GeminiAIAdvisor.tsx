@@ -15,9 +15,9 @@ export const GeminiAIAdvisor: React.FC<GeminiAIAdvisorProps> = ({ draws, config 
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
   const presetPrompts = [
-    '侧重分析红球近10期和值波动与跨度均值回归倾向',
-    '重点深度盘析蓝球/后区长周期遗漏号的回补概率',
-    '结合奇偶比与大小比，评估下一期热码重号可能性',
+    '侧重分析三分六合彩近10期特码的波色（红/蓝/绿）与生肖轮转趋势',
+    '重点盘析平码6个号的和值分布、五行与大小奇偶比例平衡性',
+    '结合冷热号码遗漏矩阵，推荐下一期的特码与极佳缩水组合',
   ];
 
   const handleGenerateAIReport = async (overridePrompt?: string) => {

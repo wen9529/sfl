@@ -160,18 +160,16 @@ export const TrendCharts: React.FC<TrendChartsProps> = ({ draws, config }) => {
                 ]}
               />
               <Bar dataKey="count" name="开出次数" radius={[4, 4, 0, 0]}>
-                {redFreqs.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={
-                      entry.status === 'hot'
-                        ? '#ef4444' // Hot red
-                        : entry.status === 'cold'
-                        ? '#3b82f6' // Cold blue
-                        : '#f59e0b' // Warm amber
-                    }
-                  />
-                ))}
+                {redFreqs.map((entry, index) => {
+                  const wave = entry.waveColor as string || 'red';
+                  const fill =
+                    wave === 'red' || wave.includes('红')
+                      ? '#ef4444'
+                      : wave === 'blue' || wave.includes('蓝')
+                      ? '#3b82f6'
+                      : '#10b981';
+                  return <Cell key={`cell-${index}`} fill={fill} />;
+                })}
               </Bar>
             </BarChart>
           </ResponsiveContainer>

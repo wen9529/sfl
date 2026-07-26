@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LotteryKind, DrawRecord, PredictionResult } from './types';
-import { LOTTERY_CONFIGS, INITIAL_MOCK_DATA } from './data/mockLotteryData';
+import { LOTTERY_CONFIGS, INITIAL_MOCK_DATA, parseMacauApiResponse } from './data/mockLotteryData';
 import { Header } from './components/Header';
 import { OverviewStats } from './components/OverviewStats';
 import { TrendCharts } from './components/TrendCharts';
@@ -15,10 +15,10 @@ import { GeminiAIAdvisor } from './components/GeminiAIAdvisor';
 import { BacktestTool } from './components/BacktestTool';
 import { Serv00DeploymentModal } from './components/Serv00DeploymentModal';
 import { RecordManager } from './components/RecordManager';
-import { ShieldAlert, Sparkles, HeartHandshake } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 
 export default function App() {
-  const [selectedLottery, setSelectedLottery] = useState<LotteryKind>('ssq');
+  const [selectedLottery, setSelectedLottery] = useState<LotteryKind>('macaujc3');
   const [allDraws, setAllDraws] = useState<Record<LotteryKind, DrawRecord[]>>(() => {
     try {
       const saved = localStorage.getItem('lottery_draw_data');
@@ -33,6 +33,34 @@ export default function App() {
   const [isServ00Open, setIsServ00Open] = useState<boolean>(false);
   const [isRecordManagerOpen, setIsRecordManagerOpen] = useState<boolean>(false);
   const [backtestPrediction, setBacktestPrediction] = useState<PredictionResult | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+
+  // Sync with live macaumarksix.com API via backend proxy
+  const syncLiveMacauData = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/history/macaujc3');
+      if (res.ok) {
+        const json = await res.json();
+        const parsed = parseMacauApiResponse(json);
+        if (parsed.length > 0) {
+          setAllDraws(prev => ({
+            ...prev,
+            macaujc3: parsed,
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn('Live API sync notice:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // Fetch live API once on mount
+  useEffect(() => {
+    syncLiveMacauData();
+  }, [syncLiveMacauData]);
 
   // Save changes to localStorage
   useEffect(() => {
@@ -43,7 +71,7 @@ export default function App() {
     }
   }, [allDraws]);
 
-  const currentConfig = LOTTERY_CONFIGS[selectedLottery];
+  const currentConfig = LOTTERY_CONFIGS[selectedLottery] || LOTTERY_CONFIGS.macaujc3;
   const currentDraws = allDraws[selectedLottery] || [];
   const latestDraw = currentDraws[0];
 
@@ -79,11 +107,11 @@ export default function App() {
         {/* Navigation Header */}
         <Header
           selectedLottery={selectedLottery}
-          onSelectLottery={(kind) => {
-            setSelectedLottery(kind);
-          }}
+          onSelectLottery={(kind) => setSelectedLottery(kind)}
           onOpenServ00Modal={() => setIsServ00Open(true)}
           onOpenRecordManager={() => setIsRecordManagerOpen(true)}
+          onSyncLiveApi={syncLiveMacauData}
+          isSyncing={isSyncing}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
         />
@@ -95,7 +123,7 @@ export default function App() {
             config={currentConfig}
             latestDraw={latestDraw}
             totalDrawsCount={currentDraws.length}
-            onRefreshData={() => setIsRecordManagerOpen(true)}
+            onRefreshData={syncLiveMacauData}
           />
 
           {/* View Tab Switcher Render */}
@@ -143,7 +171,7 @@ export default function App() {
               <span>彩票有风险·投注需谨慎</span>
             </div>
             <p className="text-slate-500 max-w-2xl">
-              彩票开奖结果为独立随机事件。本软件所包含的热冷号分析、遗漏统计、马尔可夫链模型及 Gemini AI 盘析均属于概率数理建模与学术娱乐研究，不构成任何投注中奖承诺。
+              澳门三分六合彩每3分钟开奖一次。本软件数据引自 macaumarksix.com 实时接口。算法与 AI 盘析仅供数理研究，不构成任何投注中奖承诺。
             </p>
           </div>
 
@@ -152,10 +180,10 @@ export default function App() {
               onClick={() => setIsServ00Open(true)}
               className="hover:text-indigo-400 transition-all underline decoration-indigo-500/40"
             >
-              Serv00 部署指南
+              Serv00 部署助手
             </button>
             <span>•</span>
-            <span>Google AI Studio Powered</span>
+            <span>https://history.macaumarksix.com/history/macaujc3</span>
           </div>
         </div>
       </footer>
@@ -179,3 +207,4 @@ export default function App() {
     </div>
   );
 }
+

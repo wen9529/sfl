@@ -136,30 +136,28 @@ export const RecordManager: React.FC<RecordManagerProps> = ({
               </div>
 
               <div>
-                <label className="text-slate-400 block mb-1">红球/前区 ({config.redCount}个)</label>
+                <label className="text-slate-400 block mb-1">平码 6个号 (如: 20 40 23 09 27 14)</label>
                 <input
                   type="text"
                   value={redStr}
                   onChange={(e) => setRedStr(e.target.value)}
-                  placeholder="如: 03 08 15 22 31 33"
+                  placeholder="如: 20,40,23,09,27,14"
                   className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-slate-200 font-mono"
                   required
                 />
               </div>
 
-              {config.blueCount > 0 && (
-                <div>
-                  <label className="text-slate-400 block mb-1">蓝球/后区 ({config.blueCount}个)</label>
-                  <input
-                    type="text"
-                    value={blueStr}
-                    onChange={(e) => setBlueStr(e.target.value)}
-                    placeholder="如: 08"
-                    className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-slate-200 font-mono"
-                    required
-                  />
-                </div>
-              )}
+              <div>
+                <label className="text-slate-400 block mb-1">特码 1个号 (如: 18)</label>
+                <input
+                  type="text"
+                  value={blueStr}
+                  onChange={(e) => setBlueStr(e.target.value)}
+                  placeholder="如: 18"
+                  className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded text-slate-200 font-mono"
+                  required
+                />
+              </div>
             </div>
 
             <button

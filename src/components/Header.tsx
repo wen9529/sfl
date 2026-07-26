@@ -1,22 +1,23 @@
 import React from 'react';
-import { Sparkles, Server, BarChart2, ShieldAlert, Cpu } from 'lucide-react';
+import { Sparkles, Server, BarChart2, ShieldAlert, Cpu, Radio, RefreshCw } from 'lucide-react';
 import { LotteryKind } from '../types';
-import { LOTTERY_CONFIGS } from '../data/mockLotteryData';
 
 interface HeaderProps {
   selectedLottery: LotteryKind;
   onSelectLottery: (kind: LotteryKind) => void;
   onOpenServ00Modal: () => void;
   onOpenRecordManager: () => void;
+  onSyncLiveApi?: () => void;
+  isSyncing?: boolean;
   activeTab: 'analytics' | 'prediction' | 'backtest' | 'aiReport';
   setActiveTab: (tab: 'analytics' | 'prediction' | 'backtest' | 'aiReport') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  selectedLottery,
-  onSelectLottery,
   onOpenServ00Modal,
   onOpenRecordManager,
+  onSyncLiveApi,
+  isSyncing,
   activeTab,
   setActiveTab,
 }) => {
@@ -26,85 +27,56 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Logo & Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 via-rose-500 to-amber-500 flex items-center justify-center text-white shadow-md shadow-rose-900/30">
-              <Cpu className="w-5 h-5 animate-pulse" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 via-red-500 to-amber-500 flex items-center justify-center text-white shadow-md shadow-rose-900/30">
+              <Radio className="w-5 h-5 animate-pulse text-amber-200" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                  彩票开奖预测与数理分析系统
+                <h1 className="text-base sm:text-lg font-bold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+                  澳门三分六合彩 · 极速实时盘析与预测
                 </h1>
-                <span className="hidden sm:inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  v2.5 Pro
+                <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  接口实时连接
                 </span>
               </div>
               <p className="text-xs text-slate-400 hidden md:block">
-                马尔可夫链 · 蒙特卡洛模拟 · 遗漏回补 · Gemini AI 智能盘析
+                数据源: history.macaumarksix.com/history/macaujc3 (每3分钟开奖)
               </p>
             </div>
           </div>
 
-          {/* Lottery Switcher */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800">
-            {(Object.keys(LOTTERY_CONFIGS) as LotteryKind[]).map((kind) => {
-              const cfg = LOTTERY_CONFIGS[kind];
-              const isSelected = selectedLottery === kind;
-              return (
-                <button
-                  key={kind}
-                  onClick={() => onSelectLottery(kind)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    isSelected
-                      ? 'bg-rose-600 text-white shadow-sm font-semibold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
-                  }`}
-                >
-                  {cfg.shortName}
-                </button>
-              );
-            })}
-          </div>
-
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={onOpenServ00Modal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition-all shadow-sm"
-              title="Serv00 服务器一键部署与配置文件生成"
-            >
-              <Server className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Serv00 部署</span>
-            </button>
+            {onSyncLiveApi && (
+              <button
+                onClick={onSyncLiveApi}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 transition-all shadow-sm"
+                title="一键从 macaumarksix.com 获取最新开奖"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isSyncing ? '同步中...' : '同步实时开奖'}</span>
+              </button>
+            )}
 
             <button
               onClick={onOpenRecordManager}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
             >
               <BarChart2 className="w-3.5 h-3.5 text-slate-400" />
-              <span className="hidden sm:inline">数据管理</span>
+              <span className="hidden sm:inline">开奖数据管理</span>
+            </button>
+
+            <button
+              onClick={onOpenServ00Modal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition-all shadow-sm"
+              title="Serv00 服务器部署助手"
+            >
+              <Server className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Serv00 部署</span>
             </button>
           </div>
-        </div>
-
-        {/* Mobile Lottery Selection Bar */}
-        <div className="lg:hidden flex items-center justify-between py-2 border-t border-slate-800/80 overflow-x-auto no-scrollbar gap-2">
-          {(Object.keys(LOTTERY_CONFIGS) as LotteryKind[]).map((kind) => {
-            const cfg = LOTTERY_CONFIGS[kind];
-            const isSelected = selectedLottery === kind;
-            return (
-              <button
-                key={kind}
-                onClick={() => onSelectLottery(kind)}
-                className={`px-3 py-1 rounded-full text-xs whitespace-nowrap ${
-                  isSelected
-                    ? 'bg-rose-600 text-white font-semibold'
-                    : 'bg-slate-800 text-slate-300'
-                }`}
-              >
-                {cfg.shortName}
-              </button>
-            );
-          })}
         </div>
 
         {/* Primary View Navigation Tabs */}
@@ -118,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <BarChart2 className="w-4 h-4" />
-            走势与遗漏统计
+            走势与波色遗漏
           </button>
           <button
             onClick={() => setActiveTab('prediction')}
@@ -129,7 +101,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
-            智能多算法预测
+            三分六合彩智能预测
           </button>
           <button
             onClick={() => setActiveTab('aiReport')}
@@ -140,7 +112,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Cpu className="w-4 h-4 text-purple-400" />
-            Gemini AI 智能盘析
+            Gemini AI 盘析
           </button>
           <button
             onClick={() => setActiveTab('backtest')}
@@ -158,3 +130,4 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
+
