@@ -258,7 +258,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
         $parityText = $isOdd ? '单' : '双';
 
         // 1. 下一期预测
-        $prediction = generate50DrawsPredictionPHP($draws);
+        $prediction = generatePredictFrom50DrawsPHP($draws);
 
         // 2. 累计盈亏报表
         $pnl = calculateProfitAndLossPHP($draws);
@@ -304,4 +304,5 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "<i>💡 每分钟自动拉取开奖并实时演算推演</i>";
     }
 }
+
 

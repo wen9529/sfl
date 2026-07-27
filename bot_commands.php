@@ -209,23 +209,39 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             if ($page > $totalPages) $page = $totalPages;
 
             $startIndex = ($page - 1) * $pageSize;
-            $slice = array_slice($draws, $startIndex, $pageSize);
+            $endIndex = min($totalItems, $startIndex + $pageSize);
             $lines = [];
 
-            foreach ($slice as $item) {
+            for ($i = $startIndex; $i < $endIndex; $i++) {
+                $item = $draws[$i];
                 $codes = explode(',', $item['openCode']);
                 if (count($codes) < 7) continue;
 
                 $reds = array_slice($codes, 0, 6);
-                $special = $codes[6];
+                $special = intval($codes[6]);
 
                 $fmtReds = array_map(function($n) { return (int)$n < 10 ? '0'.(int)$n : ''.$n; }, $reds);
-                $fmtSpecial = (int)$special < 10 ? '0'.(int)$special : ''.$special;
+                $fmtSpecial = $special < 10 ? '0'.$special : ''.$special;
                 $zodiac = getZodiacPHP($special);
                 $wave = getWaveColorTextPHP($special);
 
-                $lines[] = "<b>第 {$item['expect']} 期</b> (" . substr($item['openTime'], 11, 8) . ")\n"
-                         . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$wave})";
+                $str = "<b>第 {$item['expect']} 期</b> (" . substr($item['openTime'], 11, 8) . ")\n"
+                     . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$wave})";
+
+                $historyContext = array_slice($draws, $i + 1);
+                if (count($historyContext) >= 50) {
+                    $prediction = generatePredictFrom50DrawsPHP($historyContext);
+                    $actualBig = $special == 49 ? '和' : ($special >= 25 ? '大' : '小');
+                    $actualOdd = $special == 49 ? '和' : ($special % 2 !== 0 ? '单' : '双');
+                    
+                    $sizeHit = $special == 49 ? '🔄' : ($prediction['sizePred'] === $actualBig ? '✅' : '❌');
+                    $parityHit = $special == 49 ? '🔄' : ($prediction['parityPred'] === $actualOdd ? '✅' : '❌');
+                    $colorHit = $prediction['colorPred'] === $wave ? '✅' : '❌';
+                    
+                    $str .= "\n🤖 <b>预测核对:</b> 大小 {$sizeHit} | 单双 {$parityHit} | 波色 {$colorHit}";
+                }
+                
+                $lines[] = $str;
             }
 
             $msgText = "<b>📜 澳门三分六合彩 · 开奖历史记录 (第 {$page}/{$totalPages} 页)</b>\n"
