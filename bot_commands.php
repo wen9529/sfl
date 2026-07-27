@@ -232,7 +232,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$waveEmoji})";
 
                 $historyContext = array_slice($draws, $i + 1);
-                if (count($historyContext) >= 50) {
+                if (count($historyContext) >= 1) {
                     $prediction = generatePredictFrom50DrawsPHP($historyContext);
                     $actualBig = $special == 49 ? '和' : ($special >= 25 ? '大' : '小');
                     $actualOdd = $special == 49 ? '和' : ($special % 2 !== 0 ? '单' : '双');

@@ -620,7 +620,7 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
                         }
                         if ($pos !== -1 && $pos + 1 < count($draws)) {
                             $historyContext = array_slice($draws, $pos + 1);
-                            if (count($historyContext) >= 50) {
+                            if (count($historyContext) >= 1) {
                                 $pred = generatePredictFrom50DrawsPHP($historyContext);
                                 $codes = array_map('intval', explode(',', $d['openCode'] ?? ''));
                                 if (count($codes) >= 7) {
