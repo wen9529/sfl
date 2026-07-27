@@ -65,8 +65,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         $replyKeyboard = [
             'keyboard' => [
                 [['text' => '🎰 最新开奖'], ['text' => '📜 历史记录']],
-                [['text' => '🧠 智能预测'], ['text' => '📊 430期盈亏']],
-                [['text' => '❓ 帮助菜单']]
+                [['text' => '🧠 智能预测'], ['text' => '📊 430期盈亏']]
             ],
             'resize_keyboard' => true,
             'one_time_keyboard' => false
