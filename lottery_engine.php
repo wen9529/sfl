@@ -140,7 +140,7 @@ if (!function_exists('getLatestDrawsPHP')) {
             }
 
             if (!empty($rawList) && is_array($rawList)) {
-                foreach (array_slice($rawList, 0, 480) as $item) {
+                foreach (array_slice($rawList, 0, 3360) as $item) {
                     $rawCodes = explode(',', $item['openCode'] ?? '');
                     if (count($rawCodes) >= 7) {
                         $intCodes = array_map('intval', array_slice($rawCodes, 0, 7));

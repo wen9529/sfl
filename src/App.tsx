@@ -52,10 +52,10 @@ export default function App() {
             newParsed.forEach(d => map.set(d.issue, d));
             const merged = Array.from(map.values()).sort((a, b) => b.issue.localeCompare(a.issue));
             
-            // Keep up to 3 days of draws (3 * 480 = 1440)
+            // Keep up to 3 days of draws (3 * 480 = 3360)
             return {
               ...prev,
-              macaujc3: merged.slice(0, 1440),
+              macaujc3: merged.slice(0, 3360),
             };
           });
         }
