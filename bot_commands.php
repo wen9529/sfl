@@ -15,6 +15,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         $chatId = null;
         $text = '';
         $messageId = null;
+        $userMessageId = null;
         $isCallback = false;
         $callbackQueryId = null;
 
@@ -47,6 +48,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         } else if (!empty($update['message'])) {
             $msg = $update['message'];
             $chatId = $msg['chat']['id'] ?? null;
+            $userMessageId = $msg['message_id'] ?? null;
             $text = trim($msg['text'] ?? '');
 
             // 映射键盘菜单点击文本
@@ -71,7 +73,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         ];
 
         // 统一发送/编辑辅助函数 (新帖子覆盖旧帖子，避免刷屏)
-        $deliverMessage = function($msgText, $inlineButtons) use ($token, $chatId, $messageId, $isCallback, $replyKeyboard) {
+        $deliverMessage = function($msgText, $inlineButtons) use ($token, $chatId, $messageId, $userMessageId, $isCallback, $replyKeyboard, &$text) {
             if ($isCallback && $messageId) {
                 // 编辑/覆盖旧帖子内容
                 $res = sendTgRequestPHP($token, 'editMessageText', [
@@ -91,20 +93,48 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     ]);
                 }
             } else {
+                // 这是用户发送的文本指令 (非回调)
+                // 1. 尝试删除用户的原始指令消息 (保持界面整洁)
+                if ($userMessageId) {
+                    sendTgRequestPHP($token, 'deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $userMessageId
+                    ]);
+                }
+
+                // 2. 尝试删除 Bot 之前发送的对应卡片 (确保屏幕只保留一个活动卡片)
+                $stateFile = __DIR__ . '/telegram_user_states.json';
+                $userStates = file_exists($stateFile) ? (json_decode(file_get_contents($stateFile), true) ?: []) : [];
+                
+                $lastMsgId = $userStates[$chatId]['last_bot_msg_id'] ?? null;
+                if ($lastMsgId) {
+                    sendTgRequestPHP($token, 'deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $lastMsgId
+                    ]);
+                }
+
                 // 发送新消息并携带内联按钮与底部键盘菜单
-                sendTgRequestPHP($token, 'sendMessage', [
+                $res = sendTgRequestPHP($token, 'sendMessage', [
                     'chat_id' => $chatId,
                     'text' => $msgText,
                     'parse_mode' => 'HTML',
                     'reply_markup' => ['inline_keyboard' => $inlineButtons]
                 ]);
 
-                // 同步配置底部常驻菜单
-                sendTgRequestPHP($token, 'sendMessage', [
-                    'chat_id' => $chatId,
-                    'text' => '📱 底部常驻菜单已配置，可随时点击切换：',
-                    'reply_markup' => $replyKeyboard
-                ]);
+                if (isset($res['result']['message_id'])) {
+                    $userStates[$chatId]['last_bot_msg_id'] = $res['result']['message_id'];
+                    file_put_contents($stateFile, json_encode($userStates, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+                }
+
+                // 仅在 /start 或 /help 时才发送配置底部菜单的提示
+                if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
+                    sendTgRequestPHP($token, 'sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => '📱 底部常驻菜单已配置，可随时点击切换：',
+                        'reply_markup' => $replyKeyboard
+                    ]);
+                }
             }
         };
 

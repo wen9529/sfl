@@ -36,12 +36,12 @@ foreach ($envPaths as $envPath) {
 
 return [
     // Telegram Bot 配置
-    'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',
-    'telegram_chat_id'   => getenv('TELEGRAM_CHAT_ID') ?: '',
-    'telegram_admin_id'  => getenv('TELEGRAM_ADMIN_ID') ?: '',
+    'telegram_bot_token' => $_ENV['TELEGRAM_BOT_TOKEN'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '',
+    'telegram_chat_id'   => $_ENV['TELEGRAM_CHAT_ID'] ?? getenv('TELEGRAM_CHAT_ID') ?: '',
+    'telegram_admin_id'  => $_ENV['TELEGRAM_ADMIN_ID'] ?? getenv('TELEGRAM_ADMIN_ID') ?: '',
     
     // Gemini API Key
-    'gemini_api_key'     => getenv('GEMINI_API_KEY') ?: '',
+    'gemini_api_key'     => $_ENV['GEMINI_API_KEY'] ?? getenv('GEMINI_API_KEY') ?: '',
     
     // 数据接口配置
     'api_data_source'    => 'https://history.macaumarksix.com/history/macaujc3',
