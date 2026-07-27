@@ -8,8 +8,8 @@ export interface MacauDrawItem {
 }
 
 export function getWaveColor(num: number): 'red' | 'blue' | 'green' {
-  const reds = [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46];
-  const blues = [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48];
+  const reds = [1, 2, 7, 8, 9, 12, 13, 18, 19, 23, 24, 28, 29, 30, 34, 35, 37, 40, 41, 45, 48];
+  const blues = [3, 4, 10, 14, 15, 20, 25, 26, 31, 36, 42];
   if (reds.includes(num)) return 'red';
   if (blues.includes(num)) return 'blue';
   return 'green';
@@ -21,10 +21,10 @@ export function getZodiac(num: number): string {
 }
 
 export function getFiveElements(num: number): string {
-  const gold = [1, 2, 15, 16, 23, 24, 31, 32, 45, 46];
-  const wood = [5, 6, 13, 14, 27, 28, 35, 36, 43, 44];
-  const water = [3, 4, 11, 12, 19, 20, 33, 34, 41, 42, 49];
-  const fire = [7, 8, 21, 22, 29, 30, 37, 38, 47, 48];
+  const gold = [4, 5, 11, 12, 13, 26, 27, 34, 35, 42, 43];
+  const wood = [8, 9, 16, 17, 24, 25, 38, 39, 46, 47];
+  const water = [1, 14, 15, 22, 23, 30, 31, 44, 45];
+  const fire = [2, 3, 10, 18, 19, 32, 33, 40, 41, 48, 49];
   if (gold.includes(num)) return '金';
   if (wood.includes(num)) return '木';
   if (water.includes(num)) return '水';
@@ -77,22 +77,43 @@ export function getMacau3MinIssueInfo(offsetDraws = 0): { expect: string; openTi
   return { expect, openTime: openTimeStr };
 }
 
+function stringToHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
 /**
- * 生成 50 期完整的 Macau 三分六合彩模拟数据
+ * 生成 50 期完整的 Macau 三分六合彩模拟数据 (使用期号 Seed 保证同一期号数据完全一致)
  */
 export function generate50MacauDraws(): MacauDrawItem[] {
   const list: MacauDrawItem[] = [];
 
   for (let i = 0; i < 50; i++) {
     const info = getMacau3MinIssueInfo(i);
+    const issue = info.expect;
+
     const reds: number[] = [];
+    let step = 0;
     while (reds.length < 6) {
-      const r = Math.floor(Math.random() * 49) + 1;
+      const hash = stringToHash(`${issue}_red_${step}`);
+      const r = (hash % 49) + 1;
       if (!reds.includes(r)) reds.push(r);
+      step++;
     }
     reds.sort((a, b) => a - b);
-    let blue = Math.floor(Math.random() * 49) + 1;
-    while (reds.includes(blue)) blue = Math.floor(Math.random() * 49) + 1;
+
+    let blueStep = 0;
+    let blueHash = stringToHash(`${issue}_blue_${blueStep}`);
+    let blue = (blueHash % 49) + 1;
+    while (reds.includes(blue)) {
+      blueStep++;
+      blueHash = stringToHash(`${issue}_blue_${blueStep}`);
+      blue = (blueHash % 49) + 1;
+    }
 
     const codeArr = [...reds, blue];
 
@@ -106,4 +127,65 @@ export function generate50MacauDraws(): MacauDrawItem[] {
     });
   }
   return list;
+}
+
+/**
+ * 优先抓取 https://history.macaumarksix.com/history/macaujc3 官方50期开奖记录
+ * 若抓取失败或异常，则降级使用 generate50MacauDraws 模拟生成
+ */
+export async function getLatestDraws(): Promise<MacauDrawItem[]> {
+  try {
+    const response = await fetch("https://history.macaumarksix.com/history/macaujc3", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: 1, pageSize: 480 }),
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (response.ok) {
+      const json: any = await response.json();
+      let rawList: any[] = [];
+      if (Array.isArray(json?.data?.records)) {
+        rawList = json.data.records;
+      } else if (Array.isArray(json?.data)) {
+        if (Array.isArray(json.data[0]?.data)) {
+          rawList = json.data[0].data;
+        } else if (Array.isArray(json.data[0]?.records)) {
+          rawList = json.data[0].records;
+        } else {
+          rawList = json.data;
+        }
+      } else if (Array.isArray(json?.records)) {
+        rawList = json.records;
+      }
+
+      if (Array.isArray(rawList) && rawList.length > 0) {
+        const draws: MacauDrawItem[] = [];
+        for (const item of rawList.slice(0, 480)) {
+          const rawCodes = String(item.openCode || "").split(",");
+          if (rawCodes.length >= 7) {
+            const numCodes = rawCodes.map((c) => parseInt(c, 10)).filter((n) => !isNaN(n));
+            if (numCodes.length >= 7) {
+              const formattedCodes = numCodes.slice(0, 7).map((n) => String(n).padStart(2, "0")).join(",");
+              draws.push({
+                expect: String(item.expect || ""),
+                openCode: formattedCodes,
+                openTime: item.openTime || new Date().toISOString(),
+                wave: item.wave || numCodes.slice(0, 7).map(getWaveColor).join(","),
+                zodiac: item.zodiac || numCodes.slice(0, 7).map(getZodiac).join(","),
+                fiveElements: numCodes.slice(0, 7).map(getFiveElements).join(","),
+              });
+            }
+          }
+        }
+        if (draws.length >= 10) {
+          return draws;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("抓取官方 MacauJC3 接口失败或超时，切回 fallback 算法:", err);
+  }
+
+  return generate50MacauDraws();
 }

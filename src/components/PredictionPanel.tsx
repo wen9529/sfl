@@ -32,7 +32,7 @@ import { getWaveColor, getZodiacByNum, getWaveLabel } from '../data/mockLotteryD
 interface PredictionPanelProps {
   draws: DrawRecord[];
   config: LotteryConfig;
-  onSendToBacktest: (prediction: PredictionResult) => void;
+  onSendToBacktest?: (prediction: PredictionResult) => void;
 }
 
 export const PredictionPanel: React.FC<PredictionPanelProps> = ({
@@ -84,7 +84,7 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
   };
 
   const handleCopyNumbers = (pred: PredictionResult) => {
-    const fullStr = `[${config.shortName}预测 - ${pred.algorithmName}] 大小: ${pred.sizePred} (1.95) | 单双: ${pred.parityPred} (1.95) | 波色: ${pred.colorPred} (${pred.colorOdds})`;
+    const fullStr = `[${config.shortName} 第${pred.targetIssue}期预测 - ${pred.algorithmName}] 大小: ${pred.sizePred} (1.95) | 单双: ${pred.parityPred} (1.95) | 波色: ${pred.colorPred} (${pred.colorOdds})`;
 
     navigator.clipboard.writeText(fullStr);
     setCopiedId(pred.id);
@@ -221,7 +221,10 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                   <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                      <h3 className="font-bold text-sm text-slate-100">{pred.algorithmName}</h3>
+                      <h3 className="font-bold text-sm text-slate-100">
+                        {pred.algorithmName} 
+                        <span className="text-slate-500 font-normal ml-2">第 {pred.targetIssue} 期</span>
+                      </h3>
                     </div>
 
                     <div className="flex items-center gap-1.5">
@@ -290,14 +293,16 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                     )}
                   </button>
 
-                  <button
-                    onClick={() => onSendToBacktest(pred)}
-                    className="py-1.5 px-3 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium flex items-center gap-1 transition-all"
-                    title="送入历史回测器验证收益率"
-                  >
-                    <PlayCircle className="w-3.5 h-3.5 text-indigo-400" />
-                    回测
-                  </button>
+                  {onSendToBacktest && (
+                    <button
+                      onClick={() => onSendToBacktest(pred)}
+                      className="py-1.5 px-3 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium flex items-center gap-1 transition-all"
+                      title="送入历史回测器验证收益率"
+                    >
+                      <PlayCircle className="w-3.5 h-3.5 text-indigo-400" />
+                      回测
+                    </button>
+                  )}
 
                   <button
                     onClick={() => toggleSave(pred.id)}

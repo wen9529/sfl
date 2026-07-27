@@ -160,6 +160,28 @@ function getRandomElements<T>(array: T[], count: number): T[] {
 }
 
 /**
+ * 提取/增加期号
+ */
+export function getNextIssue(currentIssue: string): string {
+  const match = currentIssue.match(/^(\d{4})(\d{2})(\d{2})(\d{3})$/);
+  if (!match) return `${currentIssue} (预测)`;
+  const [_, y, m, d, num] = match;
+  let nextNum = parseInt(num, 10) + 1;
+  let dateStr = `${y}-${m}-${d}`;
+  if (nextNum > 480) {
+    nextNum = 1;
+    const date = new Date(dateStr);
+    date.setDate(date.getDate() + 1);
+    dateStr = date.toISOString().split("T")[0];
+    const newY = dateStr.split("-")[0];
+    const newM = dateStr.split("-")[1];
+    const newD = dateStr.split("-")[2];
+    return `${newY}${newM}${newD}${String(nextNum).padStart(3, "0")}`;
+  }
+  return `${y}${m}${d}${String(nextNum).padStart(3, "0")}`;
+}
+
+/**
  * 1. Frequency Weighted Model (大小/单双/波色 概率加权)
  */
 export function predictFrequencyWeighted(
@@ -170,9 +192,11 @@ export function predictFrequencyWeighted(
   const sizePred: '大' | '小' = (draws.length % 2 === 0) ? '大' : '小';
   const parityPred: '单' | '双' = (draws.length % 3 === 0) ? '单' : '双';
   const colorPred: '红波' | '蓝波' | '绿波' = '🔴红波' as any === '🔴红波' ? '红波' : '蓝波';
+  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].issue) : '最新期';
 
   return {
     id: `pred-freq-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    targetIssue: nextIssue,
     algorithm: 'frequency',
     algorithmName: '50期频次与概率加权算法',
     sizePred: '大',
@@ -195,8 +219,11 @@ export function predictOmissionRecovery(
   draws: DrawRecord[],
   config: LotteryConfig
 ): PredictionResult {
+  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].issue) : '最新期';
+
   return {
     id: `pred-omit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    targetIssue: nextIssue,
     algorithm: 'omission',
     algorithmName: '极值遗漏拐点算法',
     sizePred: '小',
@@ -219,8 +246,11 @@ export function predictMarkovChain(
   draws: DrawRecord[],
   config: LotteryConfig
 ): PredictionResult {
+  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].issue) : '最新期';
+
   return {
     id: `pred-markov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    targetIssue: nextIssue,
     algorithm: 'markov',
     algorithmName: '马尔可夫转移矩阵模型',
     sizePred: '大',
@@ -243,8 +273,11 @@ export function predictMonteCarlo(
   draws: DrawRecord[],
   config: LotteryConfig
 ): PredictionResult {
+  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].issue) : '最新期';
+
   return {
     id: `pred-mc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    targetIssue: nextIssue,
     algorithm: 'montecarlo',
     algorithmName: '蒙特卡洛万次收敛模拟',
     sizePred: '小',
@@ -268,8 +301,11 @@ export function predictCustomFiltered(
   config: LotteryConfig,
   filters: FilterOptions
 ): PredictionResult {
+  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].issue) : '最新期';
+
   return {
     id: `pred-custom-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    targetIssue: nextIssue,
     algorithm: 'custom',
     algorithmName: '智能条件缩水过滤',
     sizePred: '大',

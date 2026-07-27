@@ -4,10 +4,10 @@
  */
 
 if (!function_exists('getWaveColorPHP')) {
-    // 获取号码波色
+    // 获取号码波色 (按2026年生肖卡规则)
     function getWaveColorPHP($num) {
-        $reds = [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46];
-        $blues = [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48];
+        $reds = [1, 2, 7, 8, 9, 12, 13, 18, 19, 23, 24, 28, 29, 30, 34, 35, 37, 40, 41, 45, 48];
+        $blues = [3, 4, 10, 14, 15, 20, 25, 26, 31, 36, 42];
         if (in_array((int)$num, $reds)) return 'red';
         if (in_array((int)$num, $blues)) return 'blue';
         return 'green';
@@ -36,10 +36,10 @@ if (!function_exists('getFiveElementsPHP')) {
     // 获取号码五行
     function getFiveElementsPHP($num) {
         $num = (int)$num;
-        $gold = [1, 2, 15, 16, 23, 24, 31, 32, 45, 46];
-        $wood = [5, 6, 13, 14, 27, 28, 35, 36, 43, 44];
-        $water = [3, 4, 11, 12, 19, 20, 33, 34, 41, 42, 49];
-        $fire = [7, 8, 21, 22, 29, 30, 37, 38, 47, 48];
+        $gold = [4, 5, 11, 12, 13, 26, 27, 34, 35, 42, 43];
+        $wood = [8, 9, 16, 17, 24, 25, 38, 39, 46, 47];
+        $water = [1, 14, 15, 22, 23, 30, 31, 44, 45];
+        $fire = [2, 3, 10, 18, 19, 32, 33, 40, 41, 48, 49];
         if (in_array($num, $gold)) return '金';
         if (in_array($num, $wood)) return '木';
         if (in_array($num, $water)) return '水';
@@ -85,5 +85,33 @@ if (!function_exists('sendTgRequestPHP')) {
         $result = curl_exec($ch);
         curl_close($ch);
         return json_decode($result, true) ?: [];
+    }
+}
+
+if (!function_exists('getNextIssuePHP')) {
+    // 提取/增加期号
+    function getNextIssuePHP($currentIssue) {
+        if (preg_match('/^(\d{4})(\d{2})(\d{2})(\d{3})$/', $currentIssue, $matches)) {
+            $y = $matches[1];
+            $m = $matches[2];
+            $d = $matches[3];
+            $num = (int)$matches[4];
+            
+            $nextNum = $num + 1;
+            $dateStr = "{$y}-{$m}-{$d}";
+            
+            if ($nextNum > 480) {
+                $nextNum = 1;
+                $date = new DateTime($dateStr);
+                $date->modify('+1 day');
+                $newY = $date->format('Y');
+                $newM = $date->format('m');
+                $newD = $date->format('d');
+                return $newY . $newM . $newD . str_pad((string)$nextNum, 3, '0', STR_PAD_LEFT);
+            }
+            
+            return $y . $m . $d . str_pad((string)$nextNum, 3, '0', STR_PAD_LEFT);
+        }
+        return $currentIssue . ' (预测)';
     }
 }

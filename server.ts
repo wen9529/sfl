@@ -3,7 +3,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { generate50MacauDraws, MacauDrawItem } from "./src/server/lotteryEngine";
+import { generate50MacauDraws, getLatestDraws, MacauDrawItem } from "./src/server/lotteryEngine";
 import { analyze50Draws, generate50DrawsPrediction, calculateProfitAndLoss, generateAutomatedPushReport } from "./src/server/statsAlgorithm";
 import { processTelegramMessage } from "./src/server/telegramBot";
 
@@ -13,8 +13,10 @@ async function startServer() {
 
   app.use(express.json({ limit: "5mb" }));
 
-  // 内存缓存 50 期开奖记录
-  let current50Draws: MacauDrawItem[] = generate50MacauDraws();
+  // 内存缓存开奖记录 (保留最新3天，约1440期)
+  let currentDraws: MacauDrawItem[] = await getLatestDraws();
+  // 记录上一期已推送/已处理的开奖期号
+  let lastPushedIssue = currentDraws.length > 0 ? currentDraws[0].expect : "";
 
   // Telegram Bot 配置状态
   let telegramConfig = {
@@ -46,13 +48,27 @@ async function startServer() {
     if (telegramLogs.length > 50) telegramLogs.pop();
   };
 
-  // 每 1 分钟自动拉取最新开奖记录 + 自动预测下一期 + 自动推送包含[最新开奖+上期结算+累计总盈亏+下一期预测]的复合帖子
+  // 每 1 分钟自动拉取最新开奖记录，检查期号是否有更新，仅在新期号产生时才预测并推送
   setInterval(async () => {
-    current50Draws = generate50MacauDraws();
+    const freshDraws = await getLatestDraws();
+    if (!freshDraws || freshDraws.length === 0) return;
+
+    const latestIssue = freshDraws[0].expect;
+
+    // 如果获取到的仍是旧的开奖记录，不运行预测，不进行推送
+    if (latestIssue === lastPushedIssue) {
+      return;
+    }
+
+    // 发现新的开奖期号！更新全局缓存与已推送期号
+    const map = new Map(currentDraws.map(d => [d.expect, d]));
+    freshDraws.forEach(d => map.set(d.expect, d));
+    currentDraws = Array.from(map.values()).sort((a, b) => b.expect.localeCompare(a.expect)).slice(0, 1440);
+    lastPushedIssue = latestIssue;
 
     if (telegramConfig.autoPushEnabled && telegramConfig.botToken && telegramConfig.chatId) {
       try {
-        const reportText = generateAutomatedPushReport(current50Draws);
+        const reportText = generateAutomatedPushReport(currentDraws);
         const tgRes = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -66,12 +82,12 @@ async function startServer() {
         });
         const tgData = await tgRes.json();
         if (tgData.ok) {
-          addTelegramLog("每分钟自动推送", "success", `定时推送到 ${telegramConfig.chatId} 成功 (最新开奖+下期预测+盈亏)`);
+          addTelegramLog("新期自动推送", "success", `检测到新开奖 [第 ${latestIssue} 期]，自动完成下一期预测并推送到 ${telegramConfig.chatId}`);
         } else {
-          addTelegramLog("每分钟自动推送", "error", "定时推送失败", tgData.description);
+          addTelegramLog("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送失败`, tgData.description);
         }
       } catch (err: any) {
-        addTelegramLog("每分钟自动推送", "error", "定时推送网络异常", err.message);
+        addTelegramLog("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送网络异常`, err.message);
       }
     }
   }, 60000); // 1分钟 (60000ms)
@@ -142,9 +158,9 @@ async function startServer() {
 <b>接口状态</b>: 🟢 正常通畅
 `.trim();
     } else if (messageType === "auto_combined") {
-      formattedText = generateAutomatedPushReport(current50Draws);
+      formattedText = generateAutomatedPushReport(currentDraws);
     } else if (messageType === "prediction") {
-      const pred = generate50DrawsPrediction(current50Draws);
+      const pred = generate50DrawsPrediction(currentDraws);
       formattedText = `
 <b>🧠 澳门三分六合彩 · 50期规律智能预测</b>
 --------------------------------------
@@ -195,7 +211,7 @@ async function startServer() {
       const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
       if (!token) return;
 
-      await processTelegramMessage(token, update, current50Draws);
+      await processTelegramMessage(token, update, currentDraws);
     } catch (e) {
       console.error("Webhook error:", e);
     }
@@ -203,22 +219,22 @@ async function startServer() {
 
   // API 6: 50期统计与预测 API
   app.get("/api/lottery/stats", (req, res) => {
-    const stats = analyze50Draws(current50Draws);
-    const pnl = calculateProfitAndLoss(current50Draws);
-    const prediction = generate50DrawsPrediction(current50Draws);
+    const stats = analyze50Draws(currentDraws);
+    const pnl = calculateProfitAndLoss(currentDraws);
+    const prediction = generate50DrawsPrediction(currentDraws);
 
     res.json({
       success: true,
       stats,
       pnl,
       prediction,
-      drawsCount: current50Draws.length,
+      drawsCount: currentDraws.length,
     });
   });
 
   // API 7: 智能预测 API
   app.get("/api/predict", (req, res) => {
-    const pred = generate50DrawsPrediction(current50Draws);
+    const pred = generate50DrawsPrediction(currentDraws);
     res.json({ success: true, prediction: pred });
   });
 
@@ -234,7 +250,7 @@ async function startServer() {
           msg: "处理成功",
           name: "三分六合彩",
           success: true,
-          data: current50Draws,
+          data: currentDraws,
         },
       ],
       timestamp: Date.now(),
@@ -256,8 +272,8 @@ async function startServer() {
 你是一位精通概率论与澳门三分六合彩 (Macau Mark Six) 的专业量化分析师。
 请针对近 50 期开奖记录进行深度结构化分析，分析关注点：${focusNotes || "无"}。
 
-近 50 期热号统计: ${JSON.stringify(analyze50Draws(current50Draws).hotNumbers)}
-最新一期: ${JSON.stringify(current50Draws[0])}
+近 50 期热号统计: ${JSON.stringify(analyze50Draws(currentDraws).hotNumbers)}
+最新一期: ${JSON.stringify(currentDraws[0])}
 
 请格式化输出简明分析，并给出下期关注号码组合。
 `;

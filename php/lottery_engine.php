@@ -44,6 +44,7 @@ if (!function_exists('getMacau3MinIssueInfoPHP')) {
 if (!function_exists('generateFallback50DrawsPHP')) {
     /**
      * 生成完整的 50 期澳门三分六合彩历史开奖模拟数据
+     * 使用基于期号(expect)的确定性 Seed 算法，确保相同的期号永远计算出完全一致的号码
      */
     function generateFallback50DrawsPHP($count = 50) {
         $draws = [];
@@ -53,18 +54,26 @@ if (!function_exists('generateFallback50DrawsPHP')) {
             $issue = $info['expect'];
             $timeStr = $info['openTime'];
             
-            // 随机生成6个不重复平码
+            // 基于期号的确定性计算，保证同一期号的号码绝对不变
             $reds = [];
+            $step = 0;
             while (count($reds) < 6) {
-                $r = rand(1, 49);
-                if (!in_array($r, $reds)) $reds[] = $r;
+                $hash = sprintf("%u", crc32($issue . "_red_" . $step));
+                $r = ($hash % 49) + 1;
+                if (!in_array($r, $reds)) {
+                    $reds[] = $r;
+                }
+                $step++;
             }
             sort($reds);
             
-            // 随机生成1个特码
-            $blue = rand(1, 49);
+            $blueStep = 0;
+            $blueHash = sprintf("%u", crc32($issue . "_blue_" . $blueStep));
+            $blue = ($blueHash % 49) + 1;
             while (in_array($blue, $reds)) {
-                $blue = rand(1, 49);
+                $blueStep++;
+                $blueHash = sprintf("%u", crc32($issue . "_blue_" . $blueStep));
+                $blue = ($blueHash % 49) + 1;
             }
             
             $codeArr = array_merge($reds, [$blue]);
@@ -82,11 +91,11 @@ if (!function_exists('generateFallback50DrawsPHP')) {
     }
 }
 
-if (!function_exists('getLatest50DrawsPHP')) {
+if (!function_exists('getLatestDrawsPHP')) {
     /**
      * 获取最新 50 期开奖记录 (优先读取远程 API/缓存，失败时自动退回本地引擎)
      */
-    function getLatest50DrawsPHP($forceRefresh = false) {
+    function getLatestDrawsPHP($forceRefresh = false) {
         $config = require __DIR__ . '/config.php';
         $cacheFile = $config['cache_file'];
         
@@ -103,8 +112,11 @@ if (!function_exists('getLatest50DrawsPHP')) {
         $draws = [];
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, "https://history.macaumarksix.com/history/macaujc3");
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['page' => 1, 'pageSize' => 480]));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 4);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
         curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         
@@ -114,18 +126,32 @@ if (!function_exists('getLatest50DrawsPHP')) {
         
         if ($httpCode === 200 && !empty($response)) {
             $json = json_decode($response, true);
-            if (!empty($json['data'][0]['data'])) {
+            $rawList = [];
+            if (isset($json['data']['records']) && is_array($json['data']['records'])) {
+                $rawList = $json['data']['records'];
+            } else if (isset($json['data'][0]['data']) && is_array($json['data'][0]['data'])) {
                 $rawList = $json['data'][0]['data'];
-                foreach (array_slice($rawList, 0, 50) as $item) {
-                    $codes = explode(',', $item['openCode'] ?? '');
-                    if (count($codes) >= 7) {
+            } else if (isset($json['data'][0]['records']) && is_array($json['data'][0]['records'])) {
+                $rawList = $json['data'][0]['records'];
+            } else if (isset($json['data']) && is_array($json['data'])) {
+                $rawList = $json['data'];
+            } else if (isset($json['records']) && is_array($json['records'])) {
+                $rawList = $json['records'];
+            }
+
+            if (!empty($rawList) && is_array($rawList)) {
+                foreach (array_slice($rawList, 0, 480) as $item) {
+                    $rawCodes = explode(',', $item['openCode'] ?? '');
+                    if (count($rawCodes) >= 7) {
+                        $intCodes = array_map('intval', array_slice($rawCodes, 0, 7));
+                        $formattedCodes = array_map(function($n) { return sprintf('%02d', $n); }, $intCodes);
                         $draws[] = [
                             'expect' => (string)($item['expect'] ?? ''),
-                            'openCode' => implode(',', array_map('intval', $codes)),
+                            'openCode' => implode(',', $formattedCodes),
                             'openTime' => $item['openTime'] ?? date('Y-m-d H:i:s'),
-                            'wave' => implode(',', array_map('getWaveColorPHP', $codes)),
-                            'zodiac' => implode(',', array_map('getZodiacPHP', $codes)),
-                            'fiveElements' => implode(',', array_map('getFiveElementsPHP', $codes))
+                            'wave' => $item['wave'] ?? implode(',', array_map('getWaveColorPHP', $intCodes)),
+                            'zodiac' => $item['zodiac'] ?? implode(',', array_map('getZodiacPHP', $intCodes)),
+                            'fiveElements' => implode(',', array_map('getFiveElementsPHP', $intCodes))
                         ];
                     }
                 }

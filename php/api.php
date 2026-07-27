@@ -16,7 +16,7 @@ $action = isset($_GET['action']) ? $_GET['action'] : 'history';
 
 // 路由 1: 获取最新 50 期历史开奖数据
 if ($action === 'history') {
-    $draws = getLatest50DrawsPHP();
+    $draws = getLatestDrawsPHP();
     echo json_encode([
         'result' => true,
         'message' => '操作成功 (PHP 模块化数据源)',
@@ -37,7 +37,7 @@ if ($action === 'history') {
 
 // 路由 2: 基于 50 期开奖记录规律的智能预测算法 API
 if ($action === 'predict') {
-    $draws = getLatest50DrawsPHP();
+    $draws = getLatestDrawsPHP();
     $pred = generatePredictFrom50DrawsPHP($draws);
 
     echo json_encode([
@@ -59,7 +59,7 @@ if ($action === 'predict') {
 
 // 路由 3: 50期规律深入统计与盈亏(ROI) API
 if ($action === 'stats' || $action === 'pnl') {
-    $draws = getLatest50DrawsPHP();
+    $draws = getLatestDrawsPHP();
     $stats = analyze50DrawsStatsPHP($draws);
     $pnl = calculateProfitAndLossPHP($draws);
 

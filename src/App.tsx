@@ -4,22 +4,16 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { LotteryKind, DrawRecord, PredictionResult } from './types';
+import { LotteryKind, DrawRecord } from './types';
 import { LOTTERY_CONFIGS, INITIAL_MOCK_DATA, parseMacauApiResponse } from './data/mockLotteryData';
 import { Header } from './components/Header';
 import { OverviewStats } from './components/OverviewStats';
-import { TrendCharts } from './components/TrendCharts';
-import { OmissionTable } from './components/OmissionTable';
+import { DrawHistoryList } from './components/DrawHistoryList';
 import { PredictionPanel } from './components/PredictionPanel';
-import { GeminiAIAdvisor } from './components/GeminiAIAdvisor';
-import { BacktestTool } from './components/BacktestTool';
-import { Serv00DeploymentModal } from './components/Serv00DeploymentModal';
-import { RecordManager } from './components/RecordManager';
-import { TelegramAdminModal } from './components/TelegramAdminModal';
 import { ShieldAlert } from 'lucide-react';
 
 export default function App() {
-  const [selectedLottery, setSelectedLottery] = useState<LotteryKind>('macaujc3');
+  const selectedLottery: LotteryKind = 'macaujc3';
   const [allDraws, setAllDraws] = useState<Record<LotteryKind, DrawRecord[]>>(() => {
     try {
       const saved = localStorage.getItem('lottery_draw_data');
@@ -38,11 +32,7 @@ export default function App() {
     return INITIAL_MOCK_DATA;
   });
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'prediction' | 'backtest' | 'aiReport'>('analytics');
-  const [isServ00Open, setIsServ00Open] = useState<boolean>(false);
-  const [isRecordManagerOpen, setIsRecordManagerOpen] = useState<boolean>(false);
-  const [isTelegramOpen, setIsTelegramOpen] = useState<boolean>(false);
-  const [backtestPrediction, setBacktestPrediction] = useState<PredictionResult | null>(null);
+  const [activeTab, setActiveTab] = useState<'analytics' | 'prediction'>('analytics');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Sync with live macaumarksix.com API via backend proxy
@@ -54,10 +44,19 @@ export default function App() {
         const json = await res.json();
         const parsed = parseMacauApiResponse(json);
         if (parsed.length > 0) {
-          setAllDraws(prev => ({
-            ...prev,
-            macaujc3: parsed,
-          }));
+          setAllDraws(prev => {
+            const existing = prev.macaujc3 || [];
+            // Merge existing and new, overriding existing with new if same issue
+            const map = new Map(existing.map(d => [d.issue, d]));
+            parsed.forEach(d => map.set(d.issue, d));
+            const merged = Array.from(map.values()).sort((a, b) => b.issue.localeCompare(a.issue));
+            
+            // Keep up to 3 days of draws (3 * 480 = 1440)
+            return {
+              ...prev,
+              macaujc3: merged.slice(0, 1440),
+            };
+          });
         }
       }
     } catch (err) {
@@ -67,9 +66,11 @@ export default function App() {
     }
   }, []);
 
-  // Fetch live API once on mount
+  // Fetch live API on mount and auto refresh every 30s
   useEffect(() => {
     syncLiveMacauData();
+    const timer = setInterval(syncLiveMacauData, 30000);
+    return () => clearInterval(timer);
   }, [syncLiveMacauData]);
 
   // Save changes to localStorage
@@ -85,42 +86,11 @@ export default function App() {
   const currentDraws = allDraws[selectedLottery] || [];
   const latestDraw = currentDraws[0];
 
-  const handleAddRecord = (record: DrawRecord) => {
-    setAllDraws((prev) => ({
-      ...prev,
-      [selectedLottery]: [record, ...(prev[selectedLottery] || [])],
-    }));
-  };
-
-  const handleDeleteRecord = (issue: string) => {
-    setAllDraws((prev) => ({
-      ...prev,
-      [selectedLottery]: (prev[selectedLottery] || []).filter((d) => d.issue !== issue),
-    }));
-  };
-
-  const handleResetToDefault = () => {
-    setAllDraws((prev) => ({
-      ...prev,
-      [selectedLottery]: INITIAL_MOCK_DATA[selectedLottery],
-    }));
-  };
-
-  const handleSendToBacktest = (pred: PredictionResult) => {
-    setBacktestPrediction(pred);
-    setActiveTab('backtest');
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-rose-500 selection:text-white flex flex-col justify-between">
       <div>
         {/* Navigation Header */}
         <Header
-          selectedLottery={selectedLottery}
-          onSelectLottery={(kind) => setSelectedLottery(kind)}
-          onOpenServ00Modal={() => setIsServ00Open(true)}
-          onOpenRecordManager={() => setIsRecordManagerOpen(true)}
-          onOpenTelegramModal={() => setIsTelegramOpen(true)}
           onSyncLiveApi={syncLiveMacauData}
           isSyncing={isSyncing}
           activeTab={activeTab}
@@ -140,8 +110,7 @@ export default function App() {
           {/* View Tab Switcher Render */}
           {activeTab === 'analytics' && (
             <div className="space-y-6 animate-fade-in">
-              <TrendCharts draws={currentDraws} config={currentConfig} />
-              <OmissionTable draws={currentDraws} config={currentConfig} />
+              <DrawHistoryList draws={currentDraws} />
             </div>
           )}
 
@@ -150,23 +119,6 @@ export default function App() {
               <PredictionPanel
                 draws={currentDraws}
                 config={currentConfig}
-                onSendToBacktest={handleSendToBacktest}
-              />
-            </div>
-          )}
-
-          {activeTab === 'aiReport' && (
-            <div className="animate-fade-in">
-              <GeminiAIAdvisor draws={currentDraws} config={currentConfig} />
-            </div>
-          )}
-
-          {activeTab === 'backtest' && (
-            <div className="animate-fade-in">
-              <BacktestTool
-                draws={currentDraws}
-                config={currentConfig}
-                initialPrediction={backtestPrediction}
               />
             </div>
           )}
@@ -174,56 +126,24 @@ export default function App() {
       </div>
 
       {/* Footer Disclaimer & Copyright */}
-      <footer className="bg-slate-900/80 border-t border-slate-800/80 py-8 text-xs text-slate-400 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-3 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4">
+      <footer className="bg-slate-900/80 border-t border-slate-800/80 py-6 text-xs text-slate-400 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div className="space-y-1">
             <div className="flex items-center justify-center sm:justify-start gap-2 font-bold text-slate-300">
               <ShieldAlert className="w-4 h-4 text-amber-400" />
-              <span>彩票有风险·投注需谨慎</span>
+              <span>彩票数据研究·理性参考</span>
             </div>
             <p className="text-slate-500 max-w-2xl">
-              澳门三分六合彩每3分钟开奖一次。本软件数据引自 macaumarksix.com 实时接口。算法与 AI 盘析仅供数理研究，不构成任何投注中奖承诺。
+              澳门三分六合彩实时开奖记录与数理演算法推演，数据仅供娱乐分析参考。
             </p>
           </div>
-
-          <div className="flex items-center gap-4 text-slate-500 shrink-0">
-            <button
-              onClick={() => setIsServ00Open(true)}
-              className="hover:text-indigo-400 transition-all underline decoration-indigo-500/40"
-            >
-              Serv00 部署助手
-            </button>
-            <span>•</span>
-            <span>https://history.macaumarksix.com/history/macaujc3</span>
+          <div className="text-slate-500 text-xs">
+            © 澳门三分六合彩 实时开奖与智能预测系统
           </div>
         </div>
       </footer>
-
-      {/* Serv00 Deployment Assistant Modal */}
-      <Serv00DeploymentModal
-        isOpen={isServ00Open}
-        onClose={() => setIsServ00Open(false)}
-      />
-
-      {/* Draw Record Manager Modal */}
-      <RecordManager
-        isOpen={isRecordManagerOpen}
-        onClose={() => setIsRecordManagerOpen(false)}
-        draws={currentDraws}
-        config={currentConfig}
-        onAddRecord={handleAddRecord}
-        onDeleteRecord={handleDeleteRecord}
-        onResetToDefault={handleResetToDefault}
-      />
-
-      {/* Telegram Bot Administrator & Push Center Modal */}
-      <TelegramAdminModal
-        isOpen={isTelegramOpen}
-        onClose={() => setIsTelegramOpen(false)}
-        latestDraw={latestDraw}
-        currentPrediction={backtestPrediction}
-      />
     </div>
   );
 }
+
 

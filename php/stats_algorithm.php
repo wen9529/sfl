@@ -10,7 +10,8 @@ if (!function_exists('analyze50DrawsStatsPHP')) {
      * 1. 深入剖析近 50 期开奖记录的各项规律指标
      */
     function analyze50DrawsStatsPHP($draws) {
-        $totalDraws = count($draws);
+        $recentDraws = array_slice($draws, 0, 50);
+        $totalDraws = count($recentDraws);
         if ($totalDraws === 0) return null;
 
         // 初始化 1~49 号码统计
@@ -33,7 +34,7 @@ if (!function_exists('analyze50DrawsStatsPHP')) {
         $oddCount = 0; // 特码单数
 
         // 遍历 50 期开奖
-        foreach ($draws as $index => $draw) {
+        foreach ($recentDraws as $index => $draw) {
             $codes = array_map('intval', explode(',', $draw['openCode']));
             if (count($codes) < 7) continue;
 
@@ -123,12 +124,11 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
      */
     function generatePredictFrom50DrawsPHP($draws = null) {
         if (!$draws) {
-            $draws = getLatest50DrawsPHP();
+            $draws = getLatestDrawsPHP();
         }
 
         $stats = analyze50DrawsStatsPHP($draws);
-        $targetInfo = getMacau3MinIssueInfoPHP(-1);
-        $nextIssue = $targetInfo['expect'];
+        $nextIssue = !empty($draws) ? getNextIssuePHP($draws[0]['expect']) : getMacau3MinIssueInfoPHP(-1)['expect'];
 
         // 1) 大小预测: 分析近 50 期大小占比与走势
         $bigRatio = $stats['bigRatio'] ?? 50.0;

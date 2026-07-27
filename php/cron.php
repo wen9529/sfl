@@ -21,8 +21,27 @@ if (!$token || !$chatId) {
     exit;
 }
 
-// 获得最新50期记录并生成复合推演帖子
-$draws = getLatest50DrawsPHP();
+// 获得最新50期记录
+$draws = getLatestDrawsPHP();
+if (empty($draws)) {
+    echo "未能获取到开奖记录。\n";
+    exit;
+}
+
+$latestIssue = $draws[0]['expect'] ?? '';
+$lastFile = __DIR__ . '/last_pushed_issue.txt';
+$lastPushedIssue = file_exists($lastFile) ? trim(file_get_contents($lastFile)) : '';
+
+// 检查期号是否更新，如果是旧的开奖记录则不运行预测与推送
+if ($latestIssue === $lastPushedIssue) {
+    echo "期号 [第 {$latestIssue} 期] 未更新变动，跳过预测与推送。\n";
+    exit;
+}
+
+// 记录新期号
+file_put_contents($lastFile, $latestIssue);
+
+// 生成复合推演帖子并发送
 $msgText = generateAutomatedPushReportPHP($draws);
 
 $url = "https://api.telegram.org/bot{$token}/sendMessage";

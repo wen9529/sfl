@@ -52,7 +52,8 @@ export interface ProfitAndLossReport {
  * 分析近 50 期开奖规律
  */
 export function analyze50Draws(draws: MacauDrawItem[]): DrawStatsAnalysis {
-  const totalDraws = draws.length;
+  const recentDraws = draws.slice(0, 50);
+  const totalDraws = recentDraws.length;
   const numCounts: { [num: number]: { total: number; special: number; omission: number; found: boolean } } = {};
 
   for (let n = 1; n <= 49; n++) {
@@ -65,7 +66,7 @@ export function analyze50Draws(draws: MacauDrawItem[]): DrawStatsAnalysis {
   let bigCount = 0;
   let oddCount = 0;
 
-  draws.forEach((item) => {
+  recentDraws.forEach((item) => {
     const codes = item.openCode.split(',').map(Number);
     if (codes.length < 7) return;
 
@@ -137,12 +138,33 @@ export function analyze50Draws(draws: MacauDrawItem[]): DrawStatsAnalysis {
 }
 
 /**
+ * 提取/增加期号
+ */
+export function getNextIssue(currentIssue: string): string {
+  const match = currentIssue.match(/^(\d{4})(\d{2})(\d{2})(\d{3})$/);
+  if (!match) return `${currentIssue} (预测)`;
+  const [_, y, m, d, num] = match;
+  let nextNum = parseInt(num, 10) + 1;
+  let dateStr = `${y}-${m}-${d}`;
+  if (nextNum > 480) {
+    nextNum = 1;
+    const date = new Date(dateStr);
+    date.setDate(date.getDate() + 1);
+    dateStr = date.toISOString().split("T")[0];
+    const newY = dateStr.split("-")[0];
+    const newM = dateStr.split("-")[1];
+    const newD = dateStr.split("-")[2];
+    return `${newY}${newM}${newD}${String(nextNum).padStart(3, "0")}`;
+  }
+  return `${y}${m}${d}${String(nextNum).padStart(3, "0")}`;
+}
+
+/**
  * 基于 50 期真实规律生成大小、单双与波色算法预测
  */
 export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionResult {
   const stats = analyze50Draws(draws);
-  const targetInfo = getMacau3MinIssueInfo(-1);
-  const nextIssue = targetInfo.expect;
+  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].expect) : getMacau3MinIssueInfo(-1).expect;
 
   const bigRatio = stats.bigRatio || 50;
   const oddRatio = stats.oddRatio || 50;

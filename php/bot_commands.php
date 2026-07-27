@@ -131,7 +131,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
 
         // 2. /draw 开奖查询
         if (strpos($text, '/draw') === 0) {
-            $draws = getLatest50DrawsPHP();
+            $draws = getLatestDrawsPHP();
             $latest = $draws[0] ?? null;
 
             if ($latest) {
@@ -171,7 +171,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $page = isset($parts[1]) && is_numeric($parts[1]) ? intval($parts[1]) : 1;
             $pageSize = 5;
 
-            $draws = getLatest50DrawsPHP();
+            $draws = getLatestDrawsPHP();
             $totalItems = count($draws) ?: 50;
             $totalPages = max(1, intval(ceil($totalItems / $pageSize)));
 
@@ -225,7 +225,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
 
         // 4. /predict 智能预测
         if (strpos($text, '/predict') === 0) {
-            $draws = getLatest50DrawsPHP();
+            $draws = getLatestDrawsPHP();
             $prediction = generatePredictFrom50DrawsPHP($draws);
 
             $msgText = "<b>🧠 澳门三分六合彩 · 50期规律智能预测</b>\n"
@@ -254,7 +254,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
 
         // 5. /stats 或 /profit 或 /pnl 动态累计盈亏报表
         if (strpos($text, '/stats') === 0 || strpos($text, '/profit') === 0 || strpos($text, '/pnl') === 0) {
-            $draws = getLatest50DrawsPHP();
+            $draws = getLatestDrawsPHP();
             $pnl = calculateProfitAndLossPHP($draws);
 
             $titleText = '<b>📊 澳门三分六合彩 · 430期预测下注回测盈亏报表</b>';

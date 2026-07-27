@@ -105,7 +105,7 @@ if ($action === 'set_webhook') {
 
 // 4. 查询统计数据 API
 if ($action === 'stats' || $action === 'pnl') {
-    $draws = getLatest50DrawsPHP();
+    $draws = getLatestDrawsPHP();
     $stats = analyze50DrawsStatsPHP($draws);
     $pnl = calculateProfitAndLossPHP($draws);
 

@@ -1,8 +1,8 @@
 import { LotteryConfig, LotteryKind, DrawRecord } from '../types';
 
-export const RED_WAVE_NUMS = [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46];
-export const BLUE_WAVE_NUMS = [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 32, 36, 37, 41, 42, 47, 48];
-export const GREEN_WAVE_NUMS = [5, 6, 11, 16, 17, 21, 22, 27, 28, 33, 38, 39, 43, 44, 49];
+export const RED_WAVE_NUMS = [1, 2, 7, 8, 9, 12, 13, 18, 19, 23, 24, 28, 29, 30, 34, 35, 37, 40, 41, 45, 48];
+export const BLUE_WAVE_NUMS = [3, 4, 10, 14, 15, 20, 25, 26, 31, 36, 42];
+export const GREEN_WAVE_NUMS = [5, 6, 11, 16, 17, 21, 22, 27, 32, 33, 38, 39, 43, 44, 46, 47, 49];
 
 export function getWaveColor(num: number): 'red' | 'blue' | 'green' {
   if (RED_WAVE_NUMS.includes(num)) return 'red';
@@ -17,9 +17,10 @@ export function getWaveLabel(colorStr: string): string {
   return '未知';
 }
 
-export const ZODIACS = ["鼠", "牛", "虎", "兔", "龍", "蛇", "馬", "羊", "猴", "雞", "狗", "豬"];
+export const ZODIACS = ["马", "蛇", "龙", "兔", "虎", "牛", "鼠", "猪", "狗", "鸡", "猴", "羊"];
 
 export function getZodiacByNum(num: number): string {
+  if (num < 1 || num > 49) return "未知";
   return ZODIACS[(num - 1) % 12];
 }
 
