@@ -3,6 +3,7 @@
  * 澳门三分六合彩 · Telegram Bot Webhook 主入口 (模块化架构)
  */
 
+date_default_timezone_set('Asia/Shanghai');
 header('Content-Type: application/json; charset=utf-8');
 
 // 引入模块

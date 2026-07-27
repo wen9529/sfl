@@ -65,7 +65,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         $replyKeyboard = [
             'keyboard' => [
                 [['text' => '🎰 最新开奖'], ['text' => '📜 历史记录']],
-                [['text' => '🧠 智能预测'], ['text' => '📊 430期盈亏']]
+                [['text' => '🧠 智能预测'], ['text' => '📊 实时盈亏报表']]
             ],
             'resize_keyboard' => true,
             'one_time_keyboard' => false
@@ -144,7 +144,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "<b>🎰 最新开奖</b> - 查询最新一期开奖结果 (含生肖波色)\n"
                      . "<b>📜 历史记录</b> - 翻页查看 50 期开奖历史\n"
                      . "<b>🧠 智能预测</b> - 50期规律概率加权 AI 智能预测\n"
-                     . "<b>📊 430期盈亏</b> - 每日预测下注动态累计盈亏报表\n"
+                     . "<b>📊 实时盈亏报表</b> - 每日预测下注动态累计盈亏报表\n"
                      . "<b>❓ 帮助菜单</b> - 显示功能与使用说明\n"
                      . "--------------------------------------\n"
                      . "<i>💡 提示: 点击下方【键盘菜单】即可切换功能，帖子内按钮提供翻页与刷新支持。</i>";
@@ -290,7 +290,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "💡 <b>规律依据</b>:\n"
                      . "<i>{$prediction['rationale']}</i>\n"
                      . "--------------------------------------\n"
-                     . "<i>说明: 前50期为数据积累，后430期预测结算。开出49时大小单双退本金。生成时间: " . date('H:i:s') . "</i>";
+                     . "<i>说明: 基于多日历史数据回溯，实时预测下注结算。特码49退本金。开出49时大小单双退本金。生成时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
                 [['text' => '🔄 重新精算推演', 'callback_data' => 'cmd_predict']]
@@ -306,17 +306,15 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $draws = getLatestDrawsPHP();
             $pnl = calculateProfitAndLossPHP($draws);
 
-            $titleText = '<b>📊 澳门三分六合彩 · 430期预测下注回测盈亏报表</b>';
+            $titleText = '<b>📊 澳门三分六合彩 · 实时预测下注回测盈亏报表</b>';
             $statusText = '';
 
-            if ($pnl['predictedRounds'] === 0) {
-                $statusText = "⏳ <b>今日进度</b>: 算法数据积累中 (已完成 <b>{$pnl['dayDrawNum']}/50</b> 期基准开奖)，第 51 期开奖开启智能预测下注结算。";
-            } else if (!$pnl['isCompleted']) {
+            if (!$pnl['isCompleted']) {
                 $titleText = '<b>📊 澳门三分六合彩 · 今日实时累计盈亏报表</b>';
-                $statusText = "<b>当前进度</b>: 已累计预测下注 <code>{$pnl['predictedRounds']}</code> 期 (已开出第 {$pnl['dayDrawNum']} 期，目标 430 期)";
+                $statusText = "<b>当前进度</b>: 已实时预测下注 <code>{$pnl['predictedRounds']}</code> 期 (今日已开出第 {$pnl['dayDrawNum']} 期，基于多日历史数据精算)";
             } else {
-                $titleText = '<b>📊 澳门三分六合彩 · 全天 430 期盈亏结算报表</b>';
-                $statusText = "<b>当前进度</b>: <code>今日 430 期预测结算完毕 ✅</code>";
+                $titleText = '<b>📊 澳门三分六合彩 · 今日全天 480 期盈亏结算报表</b>';
+                $statusText = "<b>当前进度</b>: <code>今日全天 480 期预测结算完毕 ✅</code>";
             }
 
             $netProfitSign = $pnl['netProfit'] >= 0 ? "+" : "";
@@ -337,7 +335,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "🏆 <b>历史最长连红</b>: <b>{$pnl['maxStreak']} 连红 🔥</b>\n"
                      . "--------------------------------------\n"
                      . "📢 <b>官方频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "") . "\n"
-                     . "💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
+                     . "💡 <i>说明：每天480期，利用多日历史数据回溯精算，实时开奖实时智能预测下注与真实回测结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
                 [['text' => '🔄 刷新盈亏结算', 'callback_data' => 'cmd_stats']]

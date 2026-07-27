@@ -56,6 +56,7 @@ export interface DrawStats {
 }
 
 export interface PredictionResult {
+  targetIssue?: string;
   id: string;
   algorithm: 'frequency' | 'omission' | 'markov' | 'montecarlo' | 'ai' | 'custom';
   algorithmName: string;

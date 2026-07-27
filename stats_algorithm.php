@@ -302,25 +302,27 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
 
 if (!function_exists('calculateProfitAndLossPHP')) {
     /**
-     * 3. 统计 430 期预测下注回测盈亏报表 (每天 480 期开奖，前 50 期作为数据积累基准，后 430 期进行预测与结算)
-     * 具备按当日进度动态累计功能：如第 61 期表示已预测 11 期，第 480 期表示全天 430 期结算完毕。
+     * 3. 统计全天 480 期预测下注回测盈亏报表 (基于多日历史数据回溯，实时进行预测与结算)
+     * 具备全天实时动态累计与多日历史回溯功能。
      */
-    function calculateProfitAndLossPHP($draws = null) {
+        function calculateProfitAndLossPHP($draws = null) {
+        if (empty($draws)) {
+            $draws = getLatestDrawsPHP();
+        }
         $dayDrawNum = 480;
-        $dateStr = '';
+        $dateStr = "";
 
-        if (is_array($draws) && !empty($draws) && !empty($draws[0]['expect'])) {
-            $rawExpect = (string)$draws[0]['expect'];
-            if (preg_match('/^(\d{8})(\d{3})$/', $rawExpect, $matches)) {
+        if (is_array($draws) && !empty($draws) && !empty($draws[0]["expect"])) {
+            $rawExpect = (string)$draws[0]["expect"];
+            if (preg_match("/^(\d{8})(\d{3})$/", $rawExpect, $matches)) {
                 $dateStr = $matches[1];
                 $dayDrawNum = intval($matches[2]);
-            } else if (preg_match('/\d{1,3}$/', $rawExpect, $matches)) {
+            } else if (preg_match("/\d{1,3}$/", $rawExpect, $matches)) {
                 $dayDrawNum = intval($matches[0]);
             }
         }
 
-        $totalRounds = 430; // 目标全天预测期数
-        $isCompleted = ($dayDrawNum >= 480);
+        $totalRounds = 480;
         $betPerRound = 3;
 
         $predictedRounds = 0;
@@ -336,38 +338,33 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         if (is_array($draws) && count($draws) > 50) {
             $currentDayDraws = [];
             foreach ($draws as $idx => $d) {
-                $exp = (string)$d['expect'];
-                if ($dateStr !== '' && strpos($exp, $dateStr) !== 0) {
+                $exp = (string)$d["expect"];
+                if ($dateStr !== "" && strpos($exp, $dateStr) !== 0) {
                     continue; 
                 }
-                if (preg_match('/(\d{3})$/', $exp, $m)) {
-                    $num = intval($m[1]);
-                    if ($num >= 51) {
-                        $currentDayDraws[$idx] = $d;
-                    }
-                }
+                $currentDayDraws[$idx] = $d;
             }
-            krsort($currentDayDraws); // 按时间升序遍历
+            krsort($currentDayDraws); // 按时间升序遍历（利用已保存的数天历史数据作为50期背景，无需等待0点后积累50期）
             
             foreach ($currentDayDraws as $idx => $d) {
                 $historyContext = array_slice($draws, $idx + 1);
                 if (count($historyContext) < 50) continue;
                 
                 $prediction = generatePredictFrom50DrawsPHP($historyContext);
-                $codes = explode(',', $d['openCode']);
+                $codes = explode(",", $d["openCode"]);
                 if (count($codes) < 7) continue;
                 $sp = intval($codes[6]);
                 
                 $isBig = $sp >= 25;
                 $isOdd = $sp % 2 !== 0;
                 
-                $actualBig = $sp == 49 ? '和' : ($isBig ? '大' : '小');
-                $actualOdd = $sp == 49 ? '和' : ($isOdd ? '单' : '双');
+                $actualBig = $sp == 49 ? "和" : ($isBig ? "大" : "小");
+                $actualOdd = $sp == 49 ? "和" : ($isOdd ? "单" : "双");
                 
-                $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
+                $waveMap = ["red" => "红波", "blue" => "蓝波", "green" => "绿波"];
                 $waveColorEn = getWaveColorPHP($sp);
-                $waveName = isset($waveMap[$waveColorEn]) ? $waveMap[$waveColorEn] : '红波';
-
+                $waveName = isset($waveMap[$waveColorEn]) ? $waveMap[$waveColorEn] : "红波";
+                
                 $sizeHit = false;
                 $parityHit = false;
                 $colorHit = false;
@@ -376,22 +373,22 @@ if (!function_exists('calculateProfitAndLossPHP')) {
                 if ($sp == 49) {
                     $roundPayout += 2; // 和局退本金
                 } else {
-                    if ($prediction['sizePred'] === $actualBig) {
+                    if ($prediction["sizePred"] === $actualBig) {
                         $sizeHit = true;
                         $sizeHits++;
                         $roundPayout += 1.95;
                     }
-                    if ($prediction['parityPred'] === $actualOdd) {
+                    if ($prediction["parityPred"] === $actualOdd) {
                         $parityHit = true;
                         $parityHits++;
                         $roundPayout += 1.95;
                     }
                 }
                 
-                if ($prediction['colorPred'] === $waveName) {
+                if ($prediction["colorPred"] === $waveName) {
                     $colorHit = true;
                     $colorHits++;
-                    $roundPayout += ($waveName === '红波' ? 2.75 : 2.98);
+                    $roundPayout += ($waveName === "红波" ? 2.75 : 2.98);
                 }
                 
                 $predictedRounds++;
@@ -414,21 +411,22 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         
         $netProfit = round($totalPayout - $totalBet, 2);
         $roi = $totalBet > 0 ? round(($netProfit / $totalBet) * 100, 2) : 0;
+        $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 480);
 
         return [
-            'dayDrawNum' => $dayDrawNum,
-            'predictedRounds' => $predictedRounds,
-            'totalRounds' => $totalRounds,
-            'isCompleted' => $isCompleted,
-            'totalBet' => $totalBet,
-            'totalPayout' => round($totalPayout, 2),
-            'netProfit' => $netProfit,
-            'roi' => $roi,
-            'sizeHitRate' => $predictedRounds > 0 ? round(($sizeHits / $predictedRounds) * 100, 1) : 0,
-            'parityHitRate' => $predictedRounds > 0 ? round(($parityHits / $predictedRounds) * 100, 1) : 0,
-            'colorHitRate' => $predictedRounds > 0 ? round(($colorHits / $predictedRounds) * 100, 1) : 0,
-            'allThreeHits' => $allThreeHits,
-            'maxStreak' => $maxStreak
+            "dayDrawNum" => $dayDrawNum,
+            "predictedRounds" => $predictedRounds,
+            "totalRounds" => $totalRounds,
+            "isCompleted" => $isCompleted,
+            "totalBet" => $totalBet,
+            "totalPayout" => round($totalPayout, 2),
+            "netProfit" => $netProfit,
+            "roi" => $roi,
+            "sizeHitRate" => $predictedRounds > 0 ? round(($sizeHits / $predictedRounds) * 100, 1) : 0,
+            "parityHitRate" => $predictedRounds > 0 ? round(($parityHits / $predictedRounds) * 100, 1) : 0,
+            "colorHitRate" => $predictedRounds > 0 ? round(($colorHits / $predictedRounds) * 100, 1) : 0,
+            "allThreeHits" => $allThreeHits,
+            "maxStreak" => $maxStreak
         ];
     }
 }

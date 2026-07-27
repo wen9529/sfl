@@ -45,10 +45,11 @@ export default function App() {
         const parsed = parseMacauApiResponse(json);
         if (parsed.length > 0) {
           setAllDraws(prev => {
-            const existing = prev.macaujc3 || [];
+            const existing = (prev.macaujc3 || []) as DrawRecord[];
+            const newParsed = (parsed || []) as DrawRecord[];
             // Merge existing and new, overriding existing with new if same issue
             const map = new Map(existing.map(d => [d.issue, d]));
-            parsed.forEach(d => map.set(d.issue, d));
+            newParsed.forEach(d => map.set(d.issue, d));
             const merged = Array.from(map.values()).sort((a, b) => b.issue.localeCompare(a.issue));
             
             // Keep up to 3 days of draws (3 * 480 = 1440)
