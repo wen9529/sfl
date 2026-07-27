@@ -204,53 +204,135 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
 }
 
 /**
- * 统计 430 期预测下注回测盈亏报表 (每天 480 期开奖，前 50 期作为数据积累基准，后 430 期进行预测与结算)
- * 具备按当日进度动态累计功能：如第 61 期表示已预测 11 期，第 480 期表示全天 430 期结算完毕。
+ * 统计预测下注回测盈亏报表
  */
 export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossReport {
-  let dayDrawNum = 480;
+  if (!draws || draws.length === 0) {
+    return {
+      dayDrawNum: 0,
+      predictedRounds: 0,
+      totalRounds: 430,
+      isCompleted: false,
+      totalBet: 0,
+      totalPayout: 0,
+      netProfit: 0,
+      roi: 0,
+      sizeHitRate: 0,
+      parityHitRate: 0,
+      colorHitRate: 0,
+      allThreeHits: 0,
+      maxStreak: 0,
+    };
+  }
 
-  if (draws && draws.length > 0 && draws[0]?.expect) {
-    const rawExpect = String(draws[0].expect);
-    const match = rawExpect.match(/\d{1,3}$/);
-    if (match) {
-      const parsed = parseInt(match[0], 10);
-      if (parsed >= 1 && parsed <= 480) {
-        dayDrawNum = parsed;
+  let dayDrawNum = 480;
+  let dateStr = "";
+  const rawExpect = String(draws[0].expect);
+  const match = rawExpect.match(/^(\d{8})(\d{3})$/);
+  if (match) {
+    dateStr = match[1];
+    dayDrawNum = parseInt(match[2], 10);
+  } else {
+    const m2 = rawExpect.match(/\d{1,3}$/);
+    if (m2) dayDrawNum = parseInt(m2[0], 10);
+  }
+
+  // Filter today draws
+  const todayDraws = draws.filter(d => {
+    if (!dateStr) return true;
+    return String(d.expect).startsWith(dateStr);
+  });
+
+  // Sort chronological (oldest to newest)
+  const sortedToday = [...todayDraws].sort((a, b) => a.expect.localeCompare(b.expect));
+
+  let totalBet = 0;
+  let totalPayout = 0;
+  let sizeHits = 0;
+  let parityHits = 0;
+  let colorHits = 0;
+  let allThreeHits = 0;
+  let maxStreak = 0;
+  let currentStreak = 0;
+  let predictedRounds = 0;
+
+  for (const d of sortedToday) {
+    const idx = draws.findIndex(item => item.expect === d.expect);
+    if (idx === -1) continue;
+    const historyContext = draws.slice(idx + 1);
+    if (historyContext.length < 10) continue; // need history context
+
+    const pred = generate50DrawsPrediction(historyContext);
+    const codes = d.openCode.split(',').map(Number);
+    if (codes.length < 7) continue;
+    const special = codes[6];
+    const isBig = special >= 25;
+    const isOdd = special % 2 !== 0;
+    const wave = getWaveColor(special);
+    const waveMap = { red: '红波', blue: '蓝波', green: '绿波' };
+    const waveName = waveMap[wave];
+    const sizeText = special === 49 ? '和' : (isBig ? '大' : '小');
+    const parityText = special === 49 ? '和' : (isOdd ? '单' : '双');
+
+    predictedRounds++;
+    const bet = 3;
+    let payout = 0;
+    let sizeHit = false;
+    let parityHit = false;
+    let colorHit = false;
+
+    if (special === 49) {
+      payout += 2; // refund
+    } else {
+      if (pred.sizePred === sizeText) {
+        sizeHit = true;
+        payout += 1.95;
       }
+      if (pred.parityPred === parityText) {
+        parityHit = true;
+        payout += 1.95;
+      }
+    }
+    if (pred.colorPred === waveName) {
+      colorHit = true;
+      payout += (waveName === '红波' ? 2.75 : 2.98);
+    }
+
+    totalBet += bet;
+    totalPayout += payout;
+
+    if (sizeHit) sizeHits++;
+    if (parityHit) parityHits++;
+    if (colorHit) colorHits++;
+    if (sizeHit && parityHit && colorHit) {
+      allThreeHits++;
+    }
+
+    const net = payout - bet;
+    if (net > 0) {
+      currentStreak++;
+      if (currentStreak > maxStreak) maxStreak = currentStreak;
+    } else {
+      currentStreak = 0;
     }
   }
 
-  const totalRounds = 430; // 目标全天预测期数
-  const predictedRounds = Math.max(0, Math.min(totalRounds, dayDrawNum - 50)); // 已预测期数 (51期对应1期)
-  const isCompleted = dayDrawNum >= 480;
-
-  const betPerRound = 3; // 每期 3 注共 3 USDT (单注 1 USDT)
-  const totalBet = predictedRounds * betPerRound;
-
-  // 按全天 430 期标准表现折算当前累计派彩与盈亏
-  const totalPayout = Number((predictedRounds * 3.90095).toFixed(2));
   const netProfit = Number((totalPayout - totalBet).toFixed(2));
   const roi = totalBet > 0 ? Number(((netProfit / totalBet) * 100).toFixed(2)) : 0;
-
-  const sizeHits = Math.round(predictedRounds * 0.625);
-  const parityHits = Math.round(predictedRounds * 0.618);
-  const colorHits = Math.round(predictedRounds * 0.423);
-  const allThreeHits = Math.round(predictedRounds * (72 / 430));
-  const maxStreak = Math.min(predictedRounds, 11);
+  const isCompleted = dayDrawNum >= 480 && predictedRounds >= 430;
 
   return {
     dayDrawNum,
     predictedRounds,
-    totalRounds,
+    totalRounds: 430,
     isCompleted,
     totalBet,
-    totalPayout,
+    totalPayout: Number(totalPayout.toFixed(2)),
     netProfit,
-    roi: predictedRounds > 0 ? roi : 30.03,
-    sizeHitRate: predictedRounds > 0 ? Number(((sizeHits / predictedRounds) * 100).toFixed(1)) : 62.5,
-    parityHitRate: predictedRounds > 0 ? Number(((parityHits / predictedRounds) * 100).toFixed(1)) : 61.8,
-    colorHitRate: predictedRounds > 0 ? Number(((colorHits / predictedRounds) * 100).toFixed(1)) : 42.3,
+    roi,
+    sizeHitRate: predictedRounds > 0 ? Number(((sizeHits / predictedRounds) * 100).toFixed(1)) : 0,
+    parityHitRate: predictedRounds > 0 ? Number(((parityHits / predictedRounds) * 100).toFixed(1)) : 0,
+    colorHitRate: predictedRounds > 0 ? Number(((colorHits / predictedRounds) * 100).toFixed(1)) : 0,
     allThreeHits,
     maxStreak,
   };
@@ -280,8 +362,8 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   const zodiac = getZodiac(special);
   const isBig = special >= 25;
   const isOdd = special % 2 !== 0;
-  const sizeText = isBig ? '大' : '小';
-  const parityText = isOdd ? '单' : '双';
+  const sizeText = special === 49 ? '和' : (isBig ? '大' : '小');
+  const parityText = special === 49 ? '和' : (isOdd ? '单' : '双');
 
   // 1. 下一期预测
   const prediction = generate50DrawsPrediction(draws);
@@ -289,20 +371,38 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   // 2. 累计盈亏报表
   const pnl = calculateProfitAndLoss(draws);
 
-  // 3. 上期结算 (根据最新一期开奖特码验证上期预测)
+  // 3. 上期结算 (根据 draws.slice(1) 即上一期历史上下文预测最新一期 draws[0])
   const prevBet = 3;
   let prevPayout = 0;
-  const sizeHit = (isBig && prediction.sizePred === '大') || (!isBig && prediction.sizePred === '小');
-  const parityHit = (isOdd && prediction.parityPred === '单') || (!isOdd && prediction.parityPred === '双');
-  const colorHit = (waveName === prediction.colorPred);
+  let sizeHit = false;
+  let parityHit = false;
+  let colorHit = false;
 
-  if (sizeHit) prevPayout += 1.95;
-  if (parityHit) prevPayout += 1.95;
-  if (colorHit) prevPayout += (prediction.colorPred === '红波' ? 2.75 : 2.98);
+  if (draws.length > 1) {
+    const prevPrediction = generate50DrawsPrediction(draws.slice(1));
+    if (special === 49) {
+      prevPayout += 2;
+    } else {
+      if (prevPrediction.sizePred === sizeText) {
+        sizeHit = true;
+        prevPayout += 1.95;
+      }
+      if (prevPrediction.parityPred === parityText) {
+        parityHit = true;
+        prevPayout += 1.95;
+      }
+    }
+    if (prevPrediction.colorPred === waveName) {
+      colorHit = true;
+      prevPayout += (waveName === '红波' ? 2.75 : 2.98);
+    }
+  }
 
   prevPayout = Number(prevPayout.toFixed(2));
   const prevNetProfit = Number((prevPayout - prevBet).toFixed(2));
-  const prevProfitSign = prevNetProfit >= 0 ? `+${prevNetProfit}` : `${prevNetProfit}`;
+  const prevProfitSignDisplay = prevNetProfit >= 0 ? `+${prevNetProfit}` : `${prevNetProfit}`;
+  const netProfitSign = pnl.netProfit >= 0 ? `+${pnl.netProfit}` : `${pnl.netProfit}`;
+  const roiSign = pnl.roi >= 0 ? `+${pnl.roi}` : `${pnl.roi}`;
 
   return `
 <b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>
@@ -313,13 +413,13 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 --------------------------------------
 <b>💸 上期结算 (第 ${latest.expect} 期)</b>:
 • 下注 3 USDT | 派彩 ${prevPayout} USDT
-• 上期净盈亏: <b>${prevProfitSign} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
+• 上期净盈亏: <b>${prevProfitSignDisplay} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
 • 命中明细: 大小${sizeHit ? '✅' : '❌'} | 单双${parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}
 --------------------------------------
 <b>📈 今日累计总盈亏 (${pnl.predictedRounds} 期)</b>:
 • 累计总投注: <code>${pnl.totalBet.toLocaleString()} USDT</code>
 • 累计总派彩: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
-• 累计净盈亏: <b>+${pnl.netProfit.toLocaleString()} USDT 🚀</b> (ROI: +${pnl.roi}%)
+• 累计净盈亏: <b>${netProfitSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: ${roiSign}%)
 --------------------------------------
 <b>🧠 下一期智能预测 (第 ${prediction.targetIssue} 期)</b>:
 📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95)
@@ -327,7 +427,7 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds})
 🔥 <b>综合置信度</b>: <b>${prediction.confidence}%</b>
 --------------------------------------
-📢 <b>官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
+<b>📢 官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
 <i>💡 每分钟自动拉取开奖并实时演算推演</i>
 `.trim();
 }
