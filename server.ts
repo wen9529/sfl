@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { generate50MacauDraws, getLatestDraws, MacauDrawItem } from "./src/server/lotteryEngine";
@@ -15,14 +16,26 @@ async function startServer() {
 
   // 内存缓存开奖记录 (保留最新3天，约1440期)
   let currentDraws: MacauDrawItem[] = await getLatestDraws();
-  // 记录上一期已推送/已处理的开奖期号
-  let lastPushedIssue = currentDraws.length > 0 ? currentDraws[0].expect : "";
+  
+  // 记录上一期已推送/已处理的开奖期号 (从文件读取或初始化)
+  const lastPushedFile = path.join(process.cwd(), "last_pushed_issue.txt");
+  let lastPushedIssue = "";
+  if (fs.existsSync(lastPushedFile)) {
+    try {
+      lastPushedIssue = fs.readFileSync(lastPushedFile, "utf8").trim();
+    } catch (e) {
+      console.error("读取 last_pushed_issue.txt 失败:", e);
+    }
+  }
+  if (!lastPushedIssue && currentDraws.length > 0) {
+    lastPushedIssue = currentDraws[0].expect;
+  }
 
-  // Telegram Bot 配置状态
+  // Telegram Bot 配置状态 (增加与 config.php 相同的硬编码默认值作为回退)
   let telegramConfig = {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "",
-    chatId: process.env.TELEGRAM_CHAT_ID || "",
-    adminId: process.env.TELEGRAM_ADMIN_ID || "",
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "7412781515:AAED_2CMyv9U-TfP3S_VvKx2C5D6z-IskS8",
+    chatId: process.env.TELEGRAM_CHAT_ID || "-1002334007303",
+    adminId: process.env.TELEGRAM_ADMIN_ID || "6147494498",
     autoPushEnabled: true,
     parseMode: "HTML",
   };
@@ -34,40 +47,54 @@ async function startServer() {
 
     const latestIssue = freshDraws[0].expect;
 
-    // 如果获取到的仍是旧的开奖记录，不运行预测，不进行推送
+    // 如果获取到的仍是旧的开奖记录，且上一次推送已成功，不运行预测与推送
     if (latestIssue === lastPushedIssue) {
       return;
     }
 
-    // 发现新的开奖期号！更新全局缓存与已推送期号
+    // 发现新的开奖期号！更新全局缓存
     const map = new Map(currentDraws.map(d => [d.expect, d]));
     freshDraws.forEach(d => map.set(d.expect, d));
     currentDraws = Array.from(map.values()).sort((a, b) => b.expect.localeCompare(a.expect)).slice(0, 1440);
-    lastPushedIssue = latestIssue;
 
-    if (telegramConfig.autoPushEnabled && telegramConfig.botToken && telegramConfig.chatId) {
+    // 如果未配置 Telegram 自动推送，则直接标记该期为已处理
+    if (!telegramConfig.autoPushEnabled || !telegramConfig.botToken || !telegramConfig.chatId) {
+      lastPushedIssue = latestIssue;
       try {
-        const reportText = generateAutomatedPushReport(currentDraws);
-        const tgRes = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chat_id: telegramConfig.chatId,
-            text: reportText,
-            parse_mode: "HTML",
-            disable_web_page_preview: true,
-          }),
-          signal: AbortSignal.timeout(8000),
-        });
-        const tgData = await tgRes.json();
-        if (tgData.ok) {
-          console.log("新期自动推送", "success", `检测到新开奖 [第 ${latestIssue} 期]，自动完成下一期预测并推送到 ${telegramConfig.chatId}`);
-        } else {
-          console.log("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送失败`, tgData.description);
-        }
-      } catch (err: any) {
-        console.log("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送网络异常`, err.message);
+        fs.writeFileSync(lastPushedFile, latestIssue, "utf8");
+      } catch (e) {
+        console.error("写入 last_pushed_issue.txt 失败:", e);
       }
+      return;
+    }
+
+    try {
+      const reportText = generateAutomatedPushReport(currentDraws);
+      const tgRes = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: telegramConfig.chatId,
+          text: reportText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const tgData = await tgRes.json();
+      if (tgData.ok) {
+        lastPushedIssue = latestIssue; // 只有在真正成功推送后，才标记该期已处理
+        try {
+          fs.writeFileSync(lastPushedFile, latestIssue, "utf8");
+        } catch (e) {
+          console.error("写入 last_pushed_issue.txt 失败:", e);
+        }
+        console.log(`[自动推送成功] 检测到新开奖 [第 ${latestIssue} 期]，已推送到 ${telegramConfig.chatId}`);
+      } else {
+        console.error(`[自动推送失败] 检测到新开奖 [第 ${latestIssue} 期]，但 Telegram 接口报错:`, tgData.description);
+      }
+    } catch (err: any) {
+      console.error(`[自动推送异常] 检测到新开奖 [第 ${latestIssue} 期]，但网络超时或发生错误:`, err.message);
     }
   }, 60000); // 1分钟 (60000ms)
 
@@ -161,6 +188,128 @@ async function startServer() {
       });
     } catch (err: any) {
       return res.status(500).json({ error: "AI分析失败: " + err.message });
+    }
+  });
+
+  // API 10: Telegram 诊断配置与日志查询接口
+  app.get("/api/telegram/status", (req, res) => {
+    const logFile = path.join(process.cwd(), "telegram_logs.json");
+    let logs: any[] = [];
+    if (fs.existsSync(logFile)) {
+      try {
+        logs = JSON.parse(fs.readFileSync(logFile, "utf8")) || [];
+      } catch (e) {
+        console.error("读取 log_file 失败:", e);
+      }
+    }
+
+    const token = telegramConfig.botToken || "";
+    const maskedToken = token.length > 10 
+      ? token.substring(0, 10) + "..." + token.substring(token.length - 5)
+      : "未配置";
+
+    res.json({
+      success: true,
+      config: {
+        botToken: maskedToken,
+        chatId: telegramConfig.chatId,
+        adminId: telegramConfig.adminId,
+        autoPushEnabled: telegramConfig.autoPushEnabled,
+      },
+      lastPushedIssue,
+      logs: logs.slice(0, 30), // 返回最近30条记录
+    });
+  });
+
+  // API 11: Telegram 手动强制测试推送诊断接口
+  app.post("/api/telegram/test-push", async (req, res) => {
+    try {
+      const token = telegramConfig.botToken;
+      const chatId = telegramConfig.chatId;
+
+      if (!token || !chatId) {
+        return res.status(400).json({
+          success: false,
+          error: "未配置 Telegram Bot Token 或 Chat ID！请检查配置。",
+        });
+      }
+
+      if (currentDraws.length === 0) {
+        return res.status(500).json({
+          success: false,
+          error: "系统缓存没有可用的开奖记录，无法生成预测推送报表。",
+        });
+      }
+
+      const latestIssue = currentDraws[0].expect;
+      const reportText = generateAutomatedPushReport(currentDraws);
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: reportText,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const httpCode = tgRes.status;
+      const tgData = await tgRes.json();
+
+      const logFile = path.join(process.cwd(), "telegram_logs.json");
+      let logs: any[] = [];
+      if (fs.existsSync(logFile)) {
+        try {
+          logs = JSON.parse(fs.readFileSync(logFile, "utf8")) || [];
+        } catch (e) {}
+      }
+
+      const logId = "log_" + Date.now();
+      const logItem = {
+        id: logId,
+        time: new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
+        type: "手动测试推送",
+        status: tgData.ok ? "success" : "error",
+        message: tgData.ok 
+          ? `手动测试推送成功 [第 ${latestIssue} 期] 到频道`
+          : `手动测试推送失败 [第 ${latestIssue} 期]，错误代码 ${httpCode}`,
+        detail: tgData.ok ? reportText : `HTTP: ${httpCode} | Description: ${tgData.description}`,
+      };
+
+      logs.unshift(logItem);
+      if (logs.length > 100) logs = logs.slice(0, 100);
+      try {
+        fs.writeFileSync(logFile, JSON.stringify(logs, null, 2), "utf8");
+      } catch (e) {}
+
+      if (tgData.ok) {
+        lastPushedIssue = latestIssue;
+        try {
+          fs.writeFileSync(lastPushedFile, latestIssue, "utf8");
+        } catch (e) {}
+
+        return res.json({
+          success: true,
+          message: `测试推送成功！已向频道 ${chatId} 发送第 ${latestIssue} 期预测报表。`,
+          telegramResponse: tgData,
+          reportText,
+        });
+      } else {
+        return res.json({
+          success: false,
+          error: tgData.description || `Telegram API 报错: Code ${httpCode}`,
+          telegramResponse: tgData,
+          reportText,
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        error: "网络请求异常: " + err.message,
+      });
     }
   });
 

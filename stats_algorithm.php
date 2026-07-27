@@ -279,33 +279,187 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
         $bestColor = reset($colors);
         $colorPred = $bestColor['name'];
         $colorOdds = $bestColor['odds'];
-        $colorReason = "结合近期遗漏与冷热反弹，优选{$colorPred}";
+        $colorReason = "结合50期特码波色比例与近期10期趋势动态调整。";
+        
+        $confidence = 85 + (int)(($bestColor['r50'] - 33.3) / 2);
+        if ($confidence < 60) $confidence = 68;
+        if ($confidence > 98) $confidence = 96;
 
-        $confidenceScore = min(98, max(88, 86 + rand(2, 8)));
-        $rationale = "📏 大小: {$sizeReason}\n🎲 单双: {$parityReason}\n🎨 波色: {$colorReason}";
+        $rationale = "1. 大小判断：{$sizeReason}\n2. 单双判断：{$parityReason}\n3. 波色判断：{$colorReason}";
 
         return [
             'targetIssue' => $nextIssue,
-            'algorithmName' => '动量趋势与均值回归综合精算模型 v4.0',
-            'confidence' => $confidenceScore,
+            'algorithmName' => '50期大小/单双/波色概率加权预测模型 v3.0',
+            'confidence' => $confidence,
             'sizePred' => $sizePred,
+            'sizeReason' => $sizeReason,
             'parityPred' => $parityPred,
+            'parityReason' => $parityReason,
             'colorPred' => $colorPred,
-            'sizeOdds' => 1.95,
-            'parityOdds' => 1.95,
             'colorOdds' => $colorOdds,
-            'rationale' => $rationale,
-            'statsSummary' => $stats
+            'colorReason' => $colorReason,
+            'rationale' => $rationale
         ];
+    }
+}
+
+if (!function_exists('syncPredictionsDatabasePHP')) {
+    /**
+     * 同步并维护 7 天开奖与预测数据库 (predictions_7days.json)
+     * 此函数由 getLatestDrawsPHP() 自动调用，确保所有期数的预测和对错结果写入同一表格文件。
+     */
+    function syncPredictionsDatabasePHP($draws) {
+        if (empty($draws)) return;
+
+        $dbFile = __DIR__ . '/predictions_7days.json';
+        $db = [];
+        if (file_exists($dbFile)) {
+            $db = json_decode(file_get_contents($dbFile), true) ?: [];
+        }
+
+        // 1. 清理超过 7 天的老旧期数记录
+        $cutoffDate = date('Ymd', strtotime('-7 days'));
+        foreach ($db as $exp => $record) {
+            $datePrefix = substr((string)$exp, 0, 8);
+            if (strlen($datePrefix) === 8 && $datePrefix < $cutoffDate) {
+                unset($db[$exp]);
+            }
+        }
+
+        // 2. 将传入的最新开奖记录按从小到大（从旧到新）排序，方便按历史上下文推导预测
+        $sortedDraws = array_reverse($draws);
+
+        foreach ($sortedDraws as $index => $d) {
+            $expect = (string)$d['expect'];
+            $openCode = $d['openCode'];
+
+            $datePrefix = substr($expect, 0, 8);
+            if (strlen($datePrefix) === 8 && $datePrefix < $cutoffDate) {
+                continue;
+            }
+
+            // 如果该期记录在数据库中已结存并已写有开奖结果，跳过
+            if (isset($db[$expect]) && !empty($db[$expect]['openCode'])) {
+                continue;
+            }
+
+            // 获取开奖特码用于结算对错
+            $codes = array_map('intval', explode(',', $openCode));
+            if (count($codes) < 7) continue;
+            $special = $codes[6];
+            $isBig = ($special >= 25);
+            $isOdd = ($special % 2 !== 0);
+            $sizeText = $special == 49 ? '和' : ($isBig ? '大' : '小');
+            $parityText = $special == 49 ? '和' : ($isOdd ? '单' : '双');
+            $wave = getWaveColorPHP($special);
+            $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
+            $waveName = $waveMap[$wave] ?? '红波';
+
+            // 如果本期尚未在数据库中记录
+            if (!isset($db[$expect])) {
+                // 回溯获取开出本期前的历史数据（即 $sortedDraws 在 $index 之前的数据，并将其反转为最新在前的顺序）
+                $historyContext = array_reverse(array_slice($sortedDraws, 0, $index));
+                
+                if (count($historyContext) >= 1) {
+                    $pred = generatePredictFrom50DrawsPHP($historyContext);
+                } else {
+                    $pred = [
+                        'sizePred' => '大',
+                        'parityPred' => '单',
+                        'colorPred' => '红波',
+                        'colorOdds' => 2.75,
+                        'confidence' => 88
+                    ];
+                }
+
+                $db[$expect] = [
+                    'expect' => $expect,
+                    'openTime' => $d['openTime'],
+                    'openCode' => null,
+                    'sizePred' => $pred['sizePred'],
+                    'parityPred' => $pred['parityPred'],
+                    'colorPred' => $pred['colorPred'],
+                    'colorOdds' => $pred['colorOdds'] ?? 2.75,
+                    'confidence' => $pred['confidence'] ?? 88,
+                    'sizeHit' => null,
+                    'parityHit' => null,
+                    'colorHit' => null,
+                    'bet' => 3,
+                    'payout' => null,
+                    'timestamp' => strtotime($d['openTime'])
+                ];
+            }
+
+            // 更新已开出的开奖结果并结算对错与派彩
+            $record = &$db[$expect];
+            $record['openCode'] = $openCode;
+
+            $payout = 0;
+            $sizeHit = false;
+            $parityHit = false;
+            $colorHit = false;
+
+            if ($special == 49) {
+                $payout += 2; // 和局退大小单双本金 (2U)
+            } else {
+                if ($record['sizePred'] === $sizeText) {
+                    $sizeHit = true;
+                    $payout += 1.95;
+                }
+                if ($record['parityPred'] === $parityText) {
+                    $parityHit = true;
+                    $payout += 1.95;
+                }
+            }
+            if ($record['colorPred'] === $waveName) {
+                $colorHit = true;
+                $payout += ($waveName === '红波' ? 2.75 : 2.98);
+            }
+
+            $record['sizeHit'] = $sizeHit;
+            $record['parityHit'] = $parityHit;
+            $record['colorHit'] = $colorHit;
+            $record['payout'] = round($payout, 2);
+            unset($record);
+        }
+
+        // 3. 预测下一期 (尚未开出的期数)
+        $nextIssue = getNextIssuePHP($draws[0]['expect']);
+        if (!isset($db[$nextIssue])) {
+            $latestTime = new DateTime($draws[0]['openTime'], new DateTimeZone('Asia/Shanghai'));
+            $latestTime->modify('+3 minutes');
+            $nextTime = $latestTime->format('Y-m-d H:i:s');
+
+            $pred = generatePredictFrom50DrawsPHP($draws);
+
+            $db[$nextIssue] = [
+                'expect' => $nextIssue,
+                'openTime' => $nextTime,
+                'openCode' => null,
+                'sizePred' => $pred['sizePred'],
+                'parityPred' => $pred['parityPred'],
+                'colorPred' => $pred['colorPred'],
+                'colorOdds' => $pred['colorOdds'] ?? 2.75,
+                'confidence' => $pred['confidence'] ?? 88,
+                'sizeHit' => null,
+                'parityHit' => null,
+                'colorHit' => null,
+                'bet' => 3,
+                'payout' => null,
+                'timestamp' => $latestTime->getTimestamp()
+            ];
+        }
+
+        // 保存文件
+        file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     }
 }
 
 if (!function_exists('calculateProfitAndLossPHP')) {
     /**
-     * 3. 统计全天 480 期预测下注回测盈亏报表 (基于多日历史数据回溯，实时进行预测与结算)
-     * 具备全天实时动态累计与多日历史回溯功能。
+     * 3. 统计全天预测下注盈亏报表 (从 predictions_7days.json 统一拉取数据)
      */
-            function calculateProfitAndLossPHP($draws = null) {
+    function calculateProfitAndLossPHP($draws = null) {
         if (empty($draws)) {
             $draws = getLatestDrawsPHP();
         }
@@ -322,18 +476,15 @@ if (!function_exists('calculateProfitAndLossPHP')) {
             }
         }
 
-        $recordsFile = __DIR__ . "/real_bets_records.json";
-        $records = [];
-        if (file_exists($recordsFile)) {
-            $json = file_get_contents($recordsFile);
-            $decoded = json_decode($json, true);
-            if (is_array($decoded)) {
-                $records = $decoded;
-            }
+        $dbFile = __DIR__ . '/predictions_7days.json';
+        $db = [];
+        if (file_exists($dbFile)) {
+            $db = json_decode(file_get_contents($dbFile), true) ?: [];
         }
 
-        // Filter today records
-        $todayRecords = [];
+        // 排序，保证连红等连贯性指标能从旧到新正确计算
+        ksort($db);
+
         $totalBet = 0;
         $totalPayout = 0;
         $sizeHits = 0;
@@ -344,25 +495,30 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         $currentStreak = 0;
         $predictedRounds = 0;
 
-        foreach ($records as $r) {
-            $exp = (string)($r["expect"] ?? "");
-            if ($dateStr !== "" && strpos($exp, $dateStr) !== 0) {
+        foreach ($db as $exp => $record) {
+            // 只统计今天该日期前缀的已开奖记录
+            if ($dateStr !== "" && strpos((string)$exp, $dateStr) !== 0) {
                 continue;
             }
-            $todayRecords[] = $r;
+            if (empty($record['openCode'])) {
+                continue;
+            }
+
             $predictedRounds++;
-            $totalBet += ($r["bet"] ?? 3);
-            $payout = $r["payout"] ?? 0;
+            $bet = isset($record['bet']) ? $record['bet'] : 3;
+            $totalBet += $bet;
+            $payout = isset($record['payout']) ? $record['payout'] : 0;
             $totalPayout += $payout;
 
-            if (!empty($r["sizeHit"])) $sizeHits++;
-            if (!empty($r["parityHit"])) $parityHits++;
-            if (!empty($r["colorHit"])) $colorHits++;
-            if (!empty($r["sizeHit"]) && !empty($r["parityHit"]) && !empty($r["colorHit"])) {
+            if (!empty($record['sizeHit'])) $sizeHits++;
+            if (!empty($record['parityHit'])) $parityHits++;
+            if (!empty($record['colorHit'])) $colorHits++;
+
+            if (!empty($record['sizeHit']) && !empty($record['parityHit']) && !empty($record['colorHit'])) {
                 $allThreeHits++;
             }
 
-            $net = $payout - ($r["bet"] ?? 3);
+            $net = $payout - $bet;
             if ($net > 0) {
                 $currentStreak++;
                 if ($currentStreak > $maxStreak) $maxStreak = $currentStreak;
@@ -373,12 +529,12 @@ if (!function_exists('calculateProfitAndLossPHP')) {
 
         $netProfit = round($totalPayout - $totalBet, 2);
         $roi = $totalBet > 0 ? round(($netProfit / $totalBet) * 100, 2) : 0;
-        $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 480);
+        $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 430);
 
         return [
             "dayDrawNum" => $dayDrawNum,
             "predictedRounds" => $predictedRounds,
-            "totalRounds" => 480,
+            "totalRounds" => 430,
             "isCompleted" => $isCompleted,
             "totalBet" => $totalBet,
             "totalPayout" => round($totalPayout, 2),
@@ -396,6 +552,7 @@ if (!function_exists('calculateProfitAndLossPHP')) {
 if (!function_exists('generateAutomatedPushReportPHP')) {
     /**
      * 生成包含【最新开奖记录 + 上期盈亏结算 + 当前累计总盈亏 + 下一期智能预测】的自动推送综合帖子
+     * 统一使用 predictions_7days.json 数据源，消除核对偏差。
      */
     function generateAutomatedPushReportPHP($draws = null) {
         if (empty($draws)) {
@@ -421,123 +578,38 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
         $sizeText = $special == 49 ? '和' : ($isBig ? '大' : '小');
         $parityText = $special == 49 ? '和' : ($isOdd ? '单' : '双');
 
-        // 1. 下一期预测
-        $prediction = generatePredictFrom50DrawsPHP($draws);
-
-        // 记录并结算最新一期真实投注记录
-        $recordsFile = __DIR__ . "/real_bets_records.json";
-        $records = [];
-        if (file_exists($recordsFile)) {
-            $dec = json_decode(file_get_contents($recordsFile), true);
-            if (is_array($dec)) $records = $dec;
+        $dbFile = __DIR__ . '/predictions_7days.json';
+        $db = [];
+        if (file_exists($dbFile)) {
+            $db = json_decode(file_get_contents($dbFile), true) ?: [];
         }
 
-        $latestExpect = $latest["expect"];
-        $alreadyRecorded = false;
-        foreach ($records as $r) {
-            if (($r["expect"] ?? "") === $latestExpect) {
-                $alreadyRecorded = true;
-                break;
-            }
-        }
-
-        if (!$alreadyRecorded && count($draws) > 1) {
-            // 用上一期的历史数据生成对当前最新期开奖的预测
-            $historyContext = array_slice($draws, 1);
-            $prevPred = generatePredictFrom50DrawsPHP($historyContext);
-
-            $bet = 3;
-            $payout = 0;
-            $sizeHit = false;
-            $parityHit = false;
-            $colorHit = false;
-
-            if ($special == 49) {
-                $payout += 2; // 和局退本金
-            } else {
-                if ($prevPred["sizePred"] === $sizeText) {
-                    $sizeHit = true;
-                    $payout += 1.95;
-                }
-                if ($prevPred["parityPred"] === $parityText) {
-                    $parityHit = true;
-                    $payout += 1.95;
-                }
-            }
-            if ($prevPred["colorPred"] === $waveName) {
-                $colorHit = true;
-                $payout += ($waveName === "红波" ? 2.75 : 2.98);
-            }
-
-            $records[] = [
-                "expect" => $latestExpect,
-                "bet" => $bet,
-                "payout" => round($payout, 2),
-                "sizeHit" => $sizeHit,
-                "parityHit" => $parityHit,
-                "colorHit" => $colorHit,
-                "timestamp" => time()
-            ];
-            file_put_contents($recordsFile, json_encode($records, JSON_UNESCAPED_UNICODE));
+        // 1. 下一期预测 (直接读取表格)
+        $nextIssue = getNextIssuePHP($latest['expect']);
+        if (isset($db[$nextIssue])) {
+            $prediction = $db[$nextIssue];
+            $prediction['targetIssue'] = $nextIssue;
+        } else {
+            $prediction = generatePredictFrom50DrawsPHP($draws);
         }
 
         // 2. 累计盈亏报表
         $pnl = calculateProfitAndLossPHP($draws);
-        // 3. 上期结算
+
+        // 3. 上期结算 (根据已缓存/结算的上一期记录)
         $prevBet = 3;
         $prevPayout = 0;
         $sizeHit = false;
         $parityHit = false;
         $colorHit = false;
 
-        if (count($draws) > 1) {
-            $prevPrediction = generatePredictFrom50DrawsPHP(array_slice($draws, 1));
-            if ($special == 49) {
-                $prevPayout += 2;
-            } else {
-                if ($prevPrediction[sizePred] === $sizeText) {
-                    $sizeHit = true;
-                    $prevPayout += 1.95;
-                }
-                if ($prevPrediction[parityPred] === $parityText) {
-                    $parityHit = true;
-                    $prevPayout += 1.95;
-                }
-            }
-            if ($prevPrediction[colorPred] === $waveName) {
-                $colorHit = true;
-                $prevPayout += ($waveName === 红波 ? 2.75 : 2.98);
-            }
-        }        // 2. 累计盈亏报表
-        $pnl = calculateProfitAndLossPHP($draws);
-
-        // 3. 上期结算
-        $prevBet = 3;
-        $prevPayout = 0;
-        $sizeHit = false;
-        $parityHit = false;
-        $colorHit = false;
-        
-        if (count($draws) > 1) {
-            $prevPrediction = generatePredictFrom50DrawsPHP(array_slice($draws, 1));
-            
-            if ($special == 49) {
-                $prevPayout += 2; // 大小和单双退本金
-            } else {
-                if ($prevPrediction['sizePred'] === $sizeText) {
-                    $sizeHit = true;
-                    $prevPayout += 1.95;
-                }
-                if ($prevPrediction['parityPred'] === $parityText) {
-                    $parityHit = true;
-                    $prevPayout += 1.95;
-                }
-            }
-            
-            if ($prevPrediction['colorPred'] === $waveName) {
-                $colorHit = true;
-                $prevPayout += ($waveName === '红波' ? 2.75 : 2.98);
-            }
+        $latestExpect = $latest['expect'];
+        if (isset($db[$latestExpect])) {
+            $record = $db[$latestExpect];
+            $sizeHit = !empty($record['sizeHit']);
+            $parityHit = !empty($record['parityHit']);
+            $colorHit = !empty($record['colorHit']);
+            $prevPayout = isset($record['payout']) ? $record['payout'] : 0;
         }
 
         $prevPayout = round($prevPayout, 2);
@@ -560,7 +632,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "--------------------------------------\n"
              . "<b>📈 今日累计总盈亏 ({$pnl['predictedRounds']} 期)</b>:\n"
              . "• 累计总投注: <code>" . number_format($pnl['totalBet']) . " USDT</code>\n"
-             . "• 累计总派彩: <code>" . number_format($pnl['totalPayout']) . " USDT</code>\n"
+             . "• 累计总派彩: <code>" . number_format($pnl['totalPayout'], 2) . " USDT</code>\n"
              . "• 累计净盈亏: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT " . ($pnl['netProfit'] >= 0 ? "🚀" : "💧") . "</b> (ROI: {$roiSign}{$pnl['roi']}%)\n"
              . "--------------------------------------\n"
              . "<b>🧠 下一期智能预测 (第 {$prediction['targetIssue']} 期)</b>:\n"
@@ -574,17 +646,18 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
     }
 }
 
-
-
-
-
 if (!function_exists('getWeeklyProfitAndLossPHP')) {
+    /**
+     * 5. 近 7 天盈亏统计报表 (从 predictions_7days.json 统一拉取数据)
+     */
     function getWeeklyProfitAndLossPHP($draws = null) {
-        if (empty($draws)) {
-            $draws = getLatestDrawsPHP();
+        $dbFile = __DIR__ . '/predictions_7days.json';
+        $db = [];
+        if (file_exists($dbFile)) {
+            $db = json_decode(file_get_contents($dbFile), true) ?: [];
         }
-        
-        // Build map for past 7 days (YYYYMMDD)
+
+        // 构造过去 7 天的每日初始结构
         $dailyMap = [];
         for ($i = 6; $i >= 0; $i--) {
             $dStr = date('Ymd', strtotime("-{$i} days"));
@@ -599,61 +672,19 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
             ];
         }
 
-        // Backtest all draws that fall within the past 7 days
-        // $draws contains up to 3360 draws sorted from newest to oldest
-        if (is_array($draws)) {
-            // Traverse from oldest to newest for correct state context or direct indexing
-            $revDraws = array_reverse($draws);
-            foreach ($revDraws as $idx => $d) {
-                $exp = (string)($d['expect'] ?? '');
-                if (strlen($exp) >= 8) {
-                    $dateKey = substr($exp, 0, 8);
-                    if (isset($dailyMap[$dateKey])) {
-                        // Find historical context before this draw for prediction
-                        // We can find position in $draws
-                        $pos = -1;
-                        foreach ($draws as $p => $item) {
-                            if (($item['expect'] ?? '') === $exp) {
-                                $pos = $p;
-                                break;
-                            }
-                        }
-                        if ($pos !== -1 && $pos + 1 < count($draws)) {
-                            $historyContext = array_slice($draws, $pos + 1);
-                            if (count($historyContext) >= 1) {
-                                $pred = generatePredictFrom50DrawsPHP($historyContext);
-                                $codes = array_map('intval', explode(',', $d['openCode'] ?? ''));
-                                if (count($codes) >= 7) {
-                                    $sp = $codes[6];
-                                    $isBig = ($sp >= 25);
-                                    $isOdd = ($sp % 2 !== 0);
-                                    $actualBig = $sp == 49 ? '和' : ($isBig ? '大' : '小');
-                                    $actualOdd = $sp == 49 ? '和' : ($isOdd ? '单' : '双');
-                                    $waveEn = getWaveColorPHP($sp);
-                                    $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
-                                    $actualWave = $waveMap[$waveEn] ?? '红波';
+        foreach ($db as $exp => $record) {
+            if (empty($record['openCode'])) {
+                continue;
+            }
+            $dateKey = substr((string)$exp, 0, 8);
+            if (isset($dailyMap[$dateKey])) {
+                $bet = isset($record['bet']) ? $record['bet'] : 3;
+                $payout = isset($record['payout']) ? $record['payout'] : 0;
 
-                                    $bet = 3;
-                                    $payout = 0;
-                                    if ($sp == 49) {
-                                        $payout += 2;
-                                    } else {
-                                        if (($pred['sizePred'] ?? '') === $actualBig) $payout += 1.95;
-                                        if (($pred['parityPred'] ?? '') === $actualOdd) $payout += 1.95;
-                                    }
-                                    if (($pred['colorPred'] ?? '') === $actualWave) {
-                                        $payout += ($actualWave === '红波' ? 2.75 : 2.98);
-                                    }
-
-                                    $dailyMap[$dateKey]['rounds']++;
-                                    $dailyMap[$dateKey]['totalBet'] += $bet;
-                                    $dailyMap[$dateKey]['totalPayout'] += $payout;
-                                    $dailyMap[$dateKey]['netProfit'] += ($payout - $bet);
-                                }
-                            }
-                        }
-                    }
-                }
+                $dailyMap[$dateKey]['rounds']++;
+                $dailyMap[$dateKey]['totalBet'] += $bet;
+                $dailyMap[$dateKey]['totalPayout'] += $payout;
+                $dailyMap[$dateKey]['netProfit'] += ($payout - $bet);
             }
         }
 

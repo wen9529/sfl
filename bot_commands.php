@@ -211,6 +211,12 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $endIndex = min($totalItems, $startIndex + $pageSize);
             $lines = [];
 
+            $dbFile = __DIR__ . '/predictions_7days.json';
+            $db = [];
+            if (file_exists($dbFile)) {
+                $db = json_decode(file_get_contents($dbFile), true) ?: [];
+            }
+
             for ($i = $startIndex; $i < $endIndex; $i++) {
                 $item = $draws[$i];
                 $codes = explode(',', $item['openCode']);
@@ -231,17 +237,35 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 $str = "<b>第 {$item['expect']} 期</b> (" . substr($item['openTime'], 11, 8) . ")\n"
                      . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$waveEmoji})";
 
-                $historyContext = array_slice($draws, $i + 1);
-                if (count($historyContext) >= 1) {
-                    $prediction = generatePredictFrom50DrawsPHP($historyContext);
+                $expect = $item['expect'];
+                $hasPreCalculated = isset($db[$expect]) && !empty($db[$expect]['sizePred']);
+                if ($hasPreCalculated) {
+                    $predRecord = $db[$expect];
+                    $sizePredVal = $predRecord['sizePred'];
+                    $parityPredVal = $predRecord['parityPred'];
+                    $colorPredVal = $predRecord['colorPred'];
+                    
                     $actualBig = $special == 49 ? '和' : ($special >= 25 ? '大' : '小');
                     $actualOdd = $special == 49 ? '和' : ($special % 2 !== 0 ? '单' : '双');
                     
-                    $sizeHit = $special == 49 ? '🔄' : ($prediction['sizePred'] === $actualBig ? '✅' : '❌');
-                    $parityHit = $special == 49 ? '🔄' : ($prediction['parityPred'] === $actualOdd ? '✅' : '❌');
-                    $colorHit = $prediction['colorPred'] === $waveTextOnly ? '✅' : '❌';
+                    $sizeHit = $special == 49 ? '🔄' : ($sizePredVal === $actualBig ? '✅' : '❌');
+                    $parityHit = $special == 49 ? '🔄' : ($parityPredVal === $actualOdd ? '✅' : '❌');
+                    $colorHit = $colorPredVal === $waveTextOnly ? '✅' : '❌';
                     
                     $str .= "\n🤖 <b>预测核对:</b> 大小 {$sizeHit} | 单双 {$parityHit} | 波色 {$colorHit}";
+                } else {
+                    $historyContext = array_slice($draws, $i + 1);
+                    if (count($historyContext) >= 1) {
+                        $prediction = generatePredictFrom50DrawsPHP($historyContext);
+                        $actualBig = $special == 49 ? '和' : ($special >= 25 ? '大' : '小');
+                        $actualOdd = $special == 49 ? '和' : ($special % 2 !== 0 ? '单' : '双');
+                        
+                        $sizeHit = $special == 49 ? '🔄' : ($prediction['sizePred'] === $actualBig ? '✅' : '❌');
+                        $parityHit = $special == 49 ? '🔄' : ($prediction['parityPred'] === $actualOdd ? '✅' : '❌');
+                        $colorHit = $prediction['colorPred'] === $waveTextOnly ? '✅' : '❌';
+                        
+                        $str .= "\n🤖 <b>预测核对:</b> 大小 {$sizeHit} | 单双 {$parityHit} | 波色 {$colorHit}";
+                    }
                 }
                 
                 $lines[] = $str;

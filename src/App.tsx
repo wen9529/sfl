@@ -10,6 +10,7 @@ import { Header } from './components/Header';
 import { OverviewStats } from './components/OverviewStats';
 import { DrawHistoryList } from './components/DrawHistoryList';
 import { PredictionPanel } from './components/PredictionPanel';
+import { TelegramPanel } from './components/TelegramPanel';
 import { ShieldAlert } from 'lucide-react';
 
 export default function App() {
@@ -32,7 +33,7 @@ export default function App() {
     return INITIAL_MOCK_DATA;
   });
 
-  const [activeTab, setActiveTab] = useState<'analytics' | 'prediction'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'prediction' | 'telegram'>('analytics');
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Sync with live macaumarksix.com API via backend proxy
@@ -121,6 +122,12 @@ export default function App() {
                 draws={currentDraws}
                 config={currentConfig}
               />
+            </div>
+          )}
+
+          {activeTab === 'telegram' && (
+            <div className="animate-fade-in">
+              <TelegramPanel />
             </div>
           )}
         </main>
