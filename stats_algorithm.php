@@ -577,18 +577,14 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
 
 
 
+
 if (!function_exists('getWeeklyProfitAndLossPHP')) {
     function getWeeklyProfitAndLossPHP($draws = null) {
         if (empty($draws)) {
             $draws = getLatestDrawsPHP();
         }
-        $recordsFile = __DIR__ . "/real_bets_records.json";
-        $records = [];
-        if (file_exists($recordsFile)) {
-            $dec = json_decode(file_get_contents($recordsFile), true);
-            if (is_array($dec)) $records = $dec;
-        }
-
+        
+        // Build map for past 7 days (YYYYMMDD)
         $dailyMap = [];
         for ($i = 6; $i >= 0; $i--) {
             $dStr = date('Ymd', strtotime("-{$i} days"));
@@ -603,17 +599,60 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
             ];
         }
 
-        foreach ($records as $r) {
-            $exp = (string)($r["expect"] ?? "");
-            if (strlen($exp) >= 8) {
-                $dateKey = substr($exp, 0, 8);
-                if (isset($dailyMap[$dateKey])) {
-                    $dailyMap[$dateKey]['rounds']++;
-                    $bet = $r["bet"] ?? 3;
-                    $payout = $r["payout"] ?? 0;
-                    $dailyMap[$dateKey]['totalBet'] += $bet;
-                    $dailyMap[$dateKey]['totalPayout'] += $payout;
-                    $dailyMap[$dateKey]['netProfit'] += ($payout - $bet);
+        // Backtest all draws that fall within the past 7 days
+        // $draws contains up to 3360 draws sorted from newest to oldest
+        if (is_array($draws)) {
+            // Traverse from oldest to newest for correct state context or direct indexing
+            $revDraws = array_reverse($draws);
+            foreach ($revDraws as $idx => $d) {
+                $exp = (string)($d['expect'] ?? '');
+                if (strlen($exp) >= 8) {
+                    $dateKey = substr($exp, 0, 8);
+                    if (isset($dailyMap[$dateKey])) {
+                        // Find historical context before this draw for prediction
+                        // We can find position in $draws
+                        $pos = -1;
+                        foreach ($draws as $p => $item) {
+                            if (($item['expect'] ?? '') === $exp) {
+                                $pos = $p;
+                                break;
+                            }
+                        }
+                        if ($pos !== -1 && $pos + 1 < count($draws)) {
+                            $historyContext = array_slice($draws, $pos + 1);
+                            if (count($historyContext) >= 50) {
+                                $pred = generatePredictFrom50DrawsPHP($historyContext);
+                                $codes = array_map('intval', explode(',', $d['openCode'] ?? ''));
+                                if (count($codes) >= 7) {
+                                    $sp = $codes[6];
+                                    $isBig = ($sp >= 25);
+                                    $isOdd = ($sp % 2 !== 0);
+                                    $actualBig = $sp == 49 ? '和' : ($isBig ? '大' : '小');
+                                    $actualOdd = $sp == 49 ? '和' : ($isOdd ? '单' : '双');
+                                    $waveEn = getWaveColorPHP($sp);
+                                    $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
+                                    $actualWave = $waveMap[$waveEn] ?? '红波';
+
+                                    $bet = 3;
+                                    $payout = 0;
+                                    if ($sp == 49) {
+                                        $payout += 2;
+                                    } else {
+                                        if (($pred['sizePred'] ?? '') === $actualBig) $payout += 1.95;
+                                        if (($pred['parityPred'] ?? '') === $actualOdd) $payout += 1.95;
+                                    }
+                                    if (($pred['colorPred'] ?? '') === $actualWave) {
+                                        $payout += ($actualWave === '红波' ? 2.75 : 2.98);
+                                    }
+
+                                    $dailyMap[$dateKey]['rounds']++;
+                                    $dailyMap[$dateKey]['totalBet'] += $bet;
+                                    $dailyMap[$dateKey]['totalPayout'] += $payout;
+                                    $dailyMap[$dateKey]['netProfit'] += ($payout - $bet);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
