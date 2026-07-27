@@ -222,10 +222,14 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 $fmtReds = array_map(function($n) { return (int)$n < 10 ? '0'.(int)$n : ''.$n; }, $reds);
                 $fmtSpecial = $special < 10 ? '0'.$special : ''.$special;
                 $zodiac = getZodiacPHP($special);
-                $wave = getWaveColorTextPHP($special);
+                $waveEmoji = getWaveColorTextPHP($special);
+
+                $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
+                $waveColorEn = getWaveColorPHP($special);
+                $waveTextOnly = isset($waveMap[$waveColorEn]) ? $waveMap[$waveColorEn] : '红波';
 
                 $str = "<b>第 {$item['expect']} 期</b> (" . substr($item['openTime'], 11, 8) . ")\n"
-                     . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$wave})";
+                     . "平码: <code>" . implode(' ', $fmtReds) . "</code> | 特码: <b>{$fmtSpecial}</b> ({$zodiac}/{$waveEmoji})";
 
                 $historyContext = array_slice($draws, $i + 1);
                 if (count($historyContext) >= 50) {
@@ -235,7 +239,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     
                     $sizeHit = $special == 49 ? '🔄' : ($prediction['sizePred'] === $actualBig ? '✅' : '❌');
                     $parityHit = $special == 49 ? '🔄' : ($prediction['parityPred'] === $actualOdd ? '✅' : '❌');
-                    $colorHit = $prediction['colorPred'] === $wave ? '✅' : '❌';
+                    $colorHit = $prediction['colorPred'] === $waveTextOnly ? '✅' : '❌';
                     
                     $str .= "\n🤖 <b>预测核对:</b> 大小 {$sizeHit} | 单双 {$parityHit} | 波色 {$colorHit}";
                 }
@@ -315,13 +319,16 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 $statusText = "<b>当前进度</b>: <code>今日 430 期预测结算完毕 ✅</code>";
             }
 
+            $netProfitSign = $pnl['netProfit'] >= 0 ? "+" : "";
+            $roiSign = $pnl['roi'] >= 0 ? "+" : "";
+
             $msgText = "{$titleText}\n"
                      . "--------------------------------------\n"
                      . "{$statusText}\n"
                      . "<b>累计总下注</b>: <code>" . number_format($pnl['totalBet']) . " USDT</code> (3 USDT/期)\n"
-                     . "<b>累计总派彩</b>: <code>" . number_format($pnl['totalPayout']) . " USDT</code>\n"
-                     . "<b>累计净盈亏</b>: <b>+" . number_format($pnl['netProfit']) . " USDT 📈</b>\n"
-                     . "<b>投资回报率</b>: <b>+{$pnl['roi']}% 🔥 (ROI)</b>\n"
+                     . "<b>累计总派彩</b>: <code>" . number_format($pnl['totalPayout'], 2) . " USDT</code>\n"
+                     . "<b>累计净盈亏</b>: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT " . ($pnl['netProfit'] >= 0 ? "📈" : "📉") . "</b>\n"
+                     . "<b>投资回报率</b>: <b>{$roiSign}{$pnl['roi']}% " . ($pnl['roi'] >= 0 ? "🔥" : "💧") . " (ROI)</b>\n"
                      . "--------------------------------------\n"
                      . "📏 <b>大小命中率</b>: <code>{$pnl['sizeHitRate']}%</code> (赔率 1.95)\n"
                      . "🎲 <b>单双命中率</b>: <code>{$pnl['parityHitRate']}%</code> (赔率 1.95)\n"
