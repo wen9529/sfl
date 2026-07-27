@@ -12,21 +12,24 @@ ini_set('display_errors', 0);
 date_default_timezone_set('Asia/Shanghai');
 
 // 加载 .env 变量 (如果存在)
-if (file_exists(__DIR__ . '/.env')) {
-    $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+$envPath = dirname(__DIR__) . '/.env';
+if (file_exists($envPath)) {
+    $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         if (strpos(trim($line), '#') === 0) continue;
-        list($name, $value) = explode('=', $line, 2);
-        $_ENV[trim($name)] = trim($value);
-        putenv(trim($name) . '=' . trim($value));
+        if (strpos($line, '=') !== false) {
+            list($name, $value) = explode('=', $line, 2);
+            $_ENV[trim($name)] = trim($value);
+            putenv(trim($name) . '=' . trim($value));
+        }
     }
 }
 
 return [
     // Telegram Bot 配置
-    'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '8902856799:AAGh69-F_ht5nvd_roAWfkmOxh8xJqzxEXk',
-    'telegram_chat_id'   => getenv('TELEGRAM_CHAT_ID') ?: '@sanfencc66',
-    'telegram_admin_id'  => getenv('TELEGRAM_ADMIN_ID') ?: '7634524866',
+    'telegram_bot_token' => getenv('TELEGRAM_BOT_TOKEN') ?: '',
+    'telegram_chat_id'   => getenv('TELEGRAM_CHAT_ID') ?: '',
+    'telegram_admin_id'  => getenv('TELEGRAM_ADMIN_ID') ?: '',
     
     // Gemini API Key
     'gemini_api_key'     => getenv('GEMINI_API_KEY') ?: '',
