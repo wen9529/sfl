@@ -11,18 +11,26 @@ ini_set('display_errors', 0);
 // 时区设置
 date_default_timezone_set('Asia/Shanghai');
 
-// 加载 .env 变量 (如果存在)
-$envPath = dirname(__DIR__) . '/.env';
-if (file_exists($envPath)) {
-    $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        if (strpos(trim($line), '#') === 0) continue;
-        if (strpos($line, '=') !== false) {
-            list($name, $value) = explode('=', $line, 2);
-            $val = trim($value, " \t\n\r\0\x0B\"'");
-            $_ENV[trim($name)] = $val;
-            putenv(trim($name) . '=' . $val);
+// 加载 .env 变量 (寻找当前目录、上级目录，以及更上一级目录)
+$envPaths = [
+    __DIR__ . '/.env',
+    dirname(__DIR__) . '/.env',
+    dirname(dirname(__DIR__)) . '/.env'
+];
+
+foreach ($envPaths as $envPath) {
+    if (file_exists($envPath)) {
+        $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            if (strpos(trim($line), '#') === 0) continue;
+            if (strpos($line, '=') !== false) {
+                list($name, $value) = explode('=', $line, 2);
+                $val = trim($value, " \t\n\r\0\x0B\"'");
+                $_ENV[trim($name)] = $val;
+                putenv(trim($name) . '=' . $val);
+            }
         }
+        break; // 找到并加载后退出循环
     }
 }
 
