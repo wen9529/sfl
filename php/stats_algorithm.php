@@ -300,7 +300,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']})\n"
              . "🔥 <b>综合置信度</b>: <b>{$prediction['confidence']}%</b>\n"
              . "--------------------------------------\n"
-             . "📢 <b>官方频道</b>: https://t.me/sanfencc66\n"
+             . "📢 <b>官方频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "") . "\n"
              . "<i>💡 每分钟自动拉取开奖并实时演算推演</i>";
     }
 }

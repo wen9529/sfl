@@ -19,8 +19,9 @@ if (file_exists($envPath)) {
         if (strpos(trim($line), '#') === 0) continue;
         if (strpos($line, '=') !== false) {
             list($name, $value) = explode('=', $line, 2);
-            $_ENV[trim($name)] = trim($value);
-            putenv(trim($name) . '=' . trim($value));
+            $val = trim($value, " \t\n\r\0\x0B\"'");
+            $_ENV[trim($name)] = $val;
+            putenv(trim($name) . '=' . $val);
         }
     }
 }

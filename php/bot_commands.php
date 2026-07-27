@@ -284,7 +284,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "🎯 <b>三项全中(大满贯)</b>: <b>{$pnl['allThreeHits']} 期 🔥</b>\n"
                      . "🏆 <b>历史最长连红</b>: <b>{$pnl['maxStreak']} 连红 🔥</b>\n"
                      . "--------------------------------------\n"
-                     . "📢 <b>官方频道</b>: https://t.me/sanfencc66\n"
+                     . "📢 <b>官方频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "") . "\n"
                      . "💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [

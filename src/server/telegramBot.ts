@@ -268,7 +268,7 @@ ${statusText}
 🎯 <b>三项全中(大满贯)</b>: <b>${pnl.allThreeHits} 期 🔥</b>
 🏆 <b>历史最长连红</b>: <b>${pnl.maxStreak} 连红 🔥</b>
 --------------------------------------
-📢 <b>官方频道</b>: https://t.me/sanfencc66
+📢 <b>官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
 💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
 `.trim();
 

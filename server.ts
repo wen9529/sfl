@@ -27,27 +27,6 @@ async function startServer() {
     parseMode: "HTML",
   };
 
-  const telegramLogs: Array<{
-    id: string;
-    time: string;
-    type: string;
-    status: "success" | "error";
-    message: string;
-    errorDetail?: string;
-  }> = [];
-
-  const addTelegramLog = (type: string, status: "success" | "error", message: string, errorDetail?: string) => {
-    telegramLogs.unshift({
-      id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      type,
-      status,
-      message,
-      errorDetail,
-    });
-    if (telegramLogs.length > 50) telegramLogs.pop();
-  };
-
   // 每 1 分钟自动拉取最新开奖记录，检查期号是否有更新，仅在新期号产生时才预测并推送
   setInterval(async () => {
     const freshDraws = await getLatestDraws();
@@ -82,124 +61,16 @@ async function startServer() {
         });
         const tgData = await tgRes.json();
         if (tgData.ok) {
-          addTelegramLog("新期自动推送", "success", `检测到新开奖 [第 ${latestIssue} 期]，自动完成下一期预测并推送到 ${telegramConfig.chatId}`);
+          console.log("新期自动推送", "success", `检测到新开奖 [第 ${latestIssue} 期]，自动完成下一期预测并推送到 ${telegramConfig.chatId}`);
         } else {
-          addTelegramLog("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送失败`, tgData.description);
+          console.log("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送失败`, tgData.description);
         }
       } catch (err: any) {
-        addTelegramLog("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送网络异常`, err.message);
+        console.log("新期自动推送", "error", `检测到新开奖 [第 ${latestIssue} 期]，推送网络异常`, err.message);
       }
     }
   }, 60000); // 1分钟 (60000ms)
 
-
-  // API 1: 获取 Telegram 配置与日志
-  app.get("/api/telegram/config", (req, res) => {
-    res.json({
-      success: true,
-      config: telegramConfig,
-      logs: telegramLogs.slice(0, 30),
-      hasEnvToken: Boolean(process.env.TELEGRAM_BOT_TOKEN),
-      hasEnvChatId: Boolean(process.env.TELEGRAM_CHAT_ID),
-    });
-  });
-
-  // API 2: 保存 Telegram 配置
-  app.post("/api/telegram/config", (req, res) => {
-    const { botToken, chatId, adminId, autoPushEnabled } = req.body;
-    if (botToken !== undefined) telegramConfig.botToken = botToken.trim();
-    if (chatId !== undefined) telegramConfig.chatId = chatId.trim();
-    if (adminId !== undefined) telegramConfig.adminId = adminId.trim();
-    if (autoPushEnabled !== undefined) telegramConfig.autoPushEnabled = Boolean(autoPushEnabled);
-
-    addTelegramLog("系统设置", "success", "更新 Telegram 配置成功");
-    return res.json({ success: true, message: "配置保存成功", config: telegramConfig });
-  });
-
-  // API 3: 测试 Bot Token
-  app.post("/api/telegram/test-bot", async (req, res) => {
-    const token = req.body.botToken || telegramConfig.botToken;
-    if (!token) return res.status(400).json({ error: "请输入 Telegram Bot Token" });
-
-    try {
-      const tgRes = await fetch(`https://api.telegram.org/bot${token}/getMe`, {
-        signal: AbortSignal.timeout(8000),
-      });
-      const tgData = await tgRes.json();
-      if (tgData.ok) {
-        addTelegramLog("Bot测试", "success", `Bot 验证成功: @${tgData.result.username}`);
-        return res.json({ success: true, botInfo: tgData.result });
-      }
-      throw new Error(tgData.description || "Telegram 返回错误");
-    } catch (err: any) {
-      addTelegramLog("Bot测试", "error", "Bot 验证失败", err.message);
-      return res.status(400).json({ error: "验证失败: " + err.message });
-    }
-  });
-
-  // API 4: 主动发送 Telegram 消息
-  app.post("/api/telegram/send", async (req, res) => {
-    const token = req.body.botToken || telegramConfig.botToken;
-    const targetChatId = req.body.chatId || telegramConfig.chatId;
-
-    if (!token || !targetChatId) {
-      return res.status(400).json({ error: "缺少 Bot Token 或 Chat ID" });
-    }
-
-    const { messageType, customText } = req.body;
-    let formattedText = customText || "📢 澳门三分六合彩管理员广播消息";
-
-    if (messageType === "test") {
-      formattedText = `
-<b>🤖 澳门三分六合彩 · Telegram 管理员连通性测试</b>
---------------------------------------
-<b>服务器时间</b>: ${new Date().toLocaleString("zh-CN")}
-<b>推送渠道</b>: ${targetChatId}
-<b>接口状态</b>: 🟢 正常通畅
-`.trim();
-    } else if (messageType === "auto_combined") {
-      formattedText = generateAutomatedPushReport(currentDraws);
-    } else if (messageType === "prediction") {
-      const pred = generate50DrawsPrediction(currentDraws);
-      formattedText = `
-<b>🧠 澳门三分六合彩 · 50期规律智能预测</b>
---------------------------------------
-<b>目标期号</b>: <code>${pred.targetIssue}</code>
-<b>算法</b>: ${pred.algorithmName}
-<b>置信度</b>: <b>${pred.confidence}% 🔥</b>
---------------------------------------
-📏 <b>大小预测</b>: <b>【 ${pred.sizePred} 】</b> (赔率 1.95)
-🎲 <b>单双预测</b>: <b>【 ${pred.parityPred} 】</b> (赔率 1.95)
-🎨 <b>波色预测</b>: <b>【 ${pred.colorPred} 】</b> (赔率 ${pred.colorOdds})
---------------------------------------
-💡 <b>规律依据</b>: ${pred.rationale}
-`.trim();
-    }
-
-    try {
-      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: targetChatId,
-          text: formattedText,
-          parse_mode: "HTML",
-          disable_web_page_preview: true,
-        }),
-        signal: AbortSignal.timeout(10000),
-      });
-
-      const tgData = await tgRes.json();
-      if (tgData.ok) {
-        addTelegramLog(messageType || "主动推送", "success", `发送至 ${targetChatId} 成功`);
-        return res.json({ success: true, message_id: tgData.result.message_id });
-      }
-      throw new Error(tgData.description || "发送失败");
-    } catch (err: any) {
-      addTelegramLog(messageType || "主动推送", "error", "发送失败", err.message);
-      return res.status(500).json({ error: "发送失败: " + err.message });
-    }
-  });
 
   // API 5: Telegram Webhook 路由处理
   app.post("/api/telegram/webhook", async (req, res) => {

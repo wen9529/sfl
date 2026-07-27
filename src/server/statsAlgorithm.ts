@@ -327,7 +327,7 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds})
 🔥 <b>综合置信度</b>: <b>${prediction.confidence}%</b>
 --------------------------------------
-📢 <b>官方频道</b>: https://t.me/sanfencc66
+📢 <b>官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
 <i>💡 每分钟自动拉取开奖并实时演算推演</i>
 `.trim();
 }
