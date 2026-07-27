@@ -121,7 +121,7 @@
                 </div>
 
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">提示: 可将 <code>php/cron.php</code> 添加到 Serv00 的 Cron Jobs，每3分钟自动发送</span>
+                    <span class="text-slate-400">提示: 可将 <code>cron.php</code> 添加到 Serv00 的 Cron Jobs，每3分钟自动发送</span>
                     <button type="submit" class="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl transition-all shadow-lg flex items-center gap-2">
                         <i class="fas fa-paper-plane"></i> 发送 Telegram 广播
                     </button>

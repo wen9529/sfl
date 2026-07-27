@@ -2,7 +2,7 @@
 /**
  * 澳门三分六合彩 定时任务 (PHP Cron Script)
  * 可在 Serv00 / cPanel / Linux Crontab 中配置每 1 分钟执行一次:
- * * * * * php /path/to/php/cron.php > /dev/null 2>&1
+ * * * * * php /path/to/cron.php > /dev/null 2>&1
  */
 
 error_reporting(E_ALL);
