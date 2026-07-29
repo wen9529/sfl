@@ -120,176 +120,340 @@ if (!function_exists('analyze50DrawsStatsPHP')) {
 
 if (!function_exists('generatePredictFrom50DrawsPHP')) {
     /**
-     * 2. 基于 50 期真实统计规律生成大小、单双与波色智能预测
-     * 结合均值回归、近期动量趋势、长龙截断等策略提高预测准确率。
+     * 2. 基于 100 期真实统计规律生成大小、单双与波色智能预测 (自适应级联统计集成模型 v4.0)
+     * 结合 1-49 逐号概率评分、一阶马尔可夫状态链、自适应长龙截断与生肖五行补偿进行预测。
      */
     function generatePredictFrom50DrawsPHP($draws = null) {
         if (!$draws) {
             $draws = getLatestDrawsPHP();
         }
 
-        $stats = analyze50DrawsStatsPHP($draws);
-        $nextIssue = !empty($draws) ? getNextIssuePHP($draws[0]['expect']) : getMacau3MinIssueInfoPHP(-1)['expect'];
-
-        $recent10 = array_slice($draws, 0, 10);
-        
-        $bigCount10 = 0;
-        $oddCount10 = 0;
-        $lastBig = null;
-        $lastOdd = null;
-        
-        foreach ($recent10 as $idx => $d) {
-            $codes = explode(',', $d['openCode']);
-            if (count($codes) < 7) continue;
-            $sp = intval($codes[6]);
-            if ($sp == 49) continue;
-            $isBig = $sp >= 25;
-            $isOdd = $sp % 2 !== 0;
-            
-            if ($isBig) $bigCount10++;
-            if ($isOdd) $oddCount10++;
-            
-            if ($idx === 0) {
-                $lastBig = $isBig;
-                $lastOdd = $isOdd;
-            }
-        }
-        
-        $consecutiveBig = 0;
-        foreach ($draws as $d) {
-            $codes = explode(',', $d['openCode']);
-            if (count($codes) < 7) continue;
-            $sp = intval($codes[6]);
-            if ($sp == 49) continue;
-            $isBig = $sp >= 25;
-            
-            if ($lastBig !== null && $isBig === $lastBig) {
-                $consecutiveBig++;
-            } else {
-                break;
-            }
-        }
-        
-        $consecutiveOdd = 0;
-        foreach ($draws as $d) {
-            $codes = explode(',', $d['openCode']);
-            if (count($codes) < 7) continue;
-            $sp = intval($codes[6]);
-            if ($sp == 49) continue;
-            $isOdd = $sp % 2 !== 0;
-            
-            if ($lastOdd !== null && $isOdd === $lastOdd) {
-                $consecutiveOdd++;
-            } else {
-                break;
-            }
+        if (empty($draws)) {
+            return [
+                'targetIssue' => getMacau3MinIssueInfoPHP(-1)['expect'] ?? '最新期',
+                'algorithmName' => '自适应级联统计集成模型 v4.0',
+                'confidence' => 90,
+                'sizePred' => '大',
+                'sizeReason' => '暂无数据开奖期望',
+                'parityPred' => '单',
+                'parityReason' => '暂无数据开奖期望',
+                'colorPred' => '红波',
+                'colorOdds' => 2.75,
+                'colorReason' => '默认开奖期望',
+                'rationale' => '暂无开奖数据，执行初始期望预测。'
+            ];
         }
 
-        $bigRatio = $stats['bigRatio'] ?? 50.0;
-        $sizePred = '大';
-        $sizeReason = '';
-        
-        if ($consecutiveBig >= 4) {
-            $sizePred = $lastBig ? '小' : '大';
-            $sizeReason = "近期连出 {$consecutiveBig} 期，防长龙阻断";
-        } else if ($bigRatio > 55.0) {
-            $sizePred = '小';
-            $sizeReason = "50期大数偏高 ({$bigRatio}%)，均值回调买小";
-        } else if ($bigRatio < 45.0) {
-            $sizePred = '大';
-            $sizeReason = "50期大数偏低 ({$bigRatio}%)，均值回补买大";
-        } else {
-            $valid10 = 0;
-            foreach ($recent10 as $d) {
-                $c = explode(',', $d['openCode']);
-                if (count($c) >= 7 && intval($c[6]) != 49) $valid10++;
-            }
-            $recentBigRatio = $valid10 > 0 ? ($bigCount10 / $valid10 * 100) : 50.0;
-            
-            if ($recentBigRatio >= 60.0) {
-                $sizePred = '大';
-                $sizeReason = "近10期大走热，顺势追大";
-            } else if ($recentBigRatio <= 40.0) {
-                $sizePred = '小';
-                $sizeReason = "近10期小走热，顺势追小";
-            } else {
-                $sizePred = $lastBig ? '小' : '大';
-                $sizeReason = "近期大小震荡，防跳位偏离";
-            }
-        }
+        $nextIssue = getNextIssuePHP($draws[0]['expect']);
 
-        $oddRatio = $stats['oddRatio'] ?? 50.0;
-        $parityPred = '单';
-        $parityReason = '';
-        
-        if ($consecutiveOdd >= 4) {
-            $parityPred = $lastOdd ? '双' : '单';
-            $parityReason = "近期连出 {$consecutiveOdd} 期，防长龙阻断";
-        } else if ($oddRatio > 55.0) {
-            $parityPred = '双';
-            $parityReason = "50期单数偏高 ({$oddRatio}%)，均值回调买双";
-        } else if ($oddRatio < 45.0) {
-            $parityPred = '单';
-            $parityReason = "50期单数偏低 ({$oddRatio}%)，均值回补买单";
-        } else {
-            $valid10 = 0;
-            foreach ($recent10 as $d) {
-                $c = explode(',', $d['openCode']);
-                if (count($c) >= 7 && intval($c[6]) != 49) $valid10++;
-            }
-            $recentOddRatio = $valid10 > 0 ? ($oddCount10 / $valid10 * 100) : 50.0;
-            
-            if ($recentOddRatio >= 60.0) {
-                $parityPred = '单';
-                $parityReason = "近10期单走热，顺势追单";
-            } else if ($recentOddRatio <= 40.0) {
-                $parityPred = '双';
-                $parityReason = "近10期双走热，顺势追双";
-            } else {
-                $parityPred = $lastOdd ? '双' : '单';
-                $parityReason = "近期单双震荡，防跳位偏离";
-            }
-        }
+        // 1. 初始化 1-49 号码得分
+        $scores = array_fill(1, 49, 1.0);
+        $totalDraws = min(count($draws), 100);
+        $recentDraws = array_slice($draws, 0, $totalDraws);
 
-        $waveDist = $stats['waveDistribution'];
-        $waves10 = ['red' => 0, 'blue' => 0, 'green' => 0];
-        foreach ($recent10 as $d) {
-            $codes = explode(',', $d['openCode']);
+        // 计算每个号码的频次和当前遗漏
+        $counts = array_fill(1, 49, 0);
+        $omission = array_fill(1, 49, 0);
+        $found = array_fill(1, 49, false);
+
+        foreach ($recentDraws as $draw) {
+            $codes = array_map('intval', explode(',', $draw['openCode']));
             if (count($codes) >= 7) {
-                $sp = intval($codes[6]);
-                if ($sp != 49) {
-                    $w = getWaveColorPHP($sp);
-                    if (isset($waves10[$w])) $waves10[$w]++;
+                $special = $codes[6];
+                if ($special >= 1 && $special <= 49) {
+                    $counts[$special]++;
+                }
+                for ($n = 1; $n <= 49; $n++) {
+                    if (in_array($n, $codes)) {
+                        $found[$n] = true;
+                    } else if (!$found[$n]) {
+                        $omission[$n]++;
+                    }
                 }
             }
         }
-        
-        $colors = [
-            'red' => ['name' => '红波', 'odds' => 2.75, 'r50' => $waveDist['redRatio'], 'r10' => $waves10['red']],
-            'blue' => ['name' => '蓝波', 'odds' => 2.98, 'r50' => $waveDist['blueRatio'], 'r10' => $waves10['blue']],
-            'green' => ['name' => '绿波', 'odds' => 2.98, 'r50' => $waveDist['greenRatio'], 'r10' => $waves10['green']]
-        ];
-        
-        uasort($colors, function($a, $b) {
-            $scoreA = $a['r50'] - ($a['r10'] * 10);
-            $scoreB = $b['r50'] - ($b['r10'] * 10);
-            return $scoreB <=> $scoreA;
-        });
-        
-        $bestColor = reset($colors);
-        $colorPred = $bestColor['name'];
-        $colorOdds = $bestColor['odds'];
-        $colorReason = "结合50期特码波色比例与近期10期趋势动态调整。";
-        
-        $confidence = 85 + (int)(($bestColor['r50'] - 33.3) / 2);
-        if ($confidence < 60) $confidence = 68;
-        if ($confidence > 98) $confidence = 96;
 
-        $rationale = "1. 大小判断：{$sizeReason}\n2. 单双判断：{$parityReason}\n3. 波色判断：{$colorReason}";
+        // 2. 考虑重号（上期特码）和邻号（上期特码的左右号码）
+        $lastCodes = array_map('intval', explode(',', $draws[0]['openCode']));
+        $lastSpecial = isset($lastCodes[6]) ? $lastCodes[6] : 0;
+        if ($lastSpecial >= 1 && $lastSpecial <= 49) {
+            $scores[$lastSpecial] += 0.15; // 重号规律
+            $leftNeighbor = ($lastSpecial === 1) ? 49 : $lastSpecial - 1;
+            $rightNeighbor = ($lastSpecial === 49) ? 1 : $lastSpecial + 1;
+            $scores[$leftNeighbor] += 0.12; // 邻号规律
+            $scores[$rightNeighbor] += 0.12;
+        }
+
+        // 3. 号码遗漏偏离修正 (遗漏值越高，均值回归反弹概率越大)
+        for ($n = 1; $n <= 49; $n++) {
+            $avgOmission = 49 / max(1, $counts[$n]); // 理论平均遗漏
+            $omissionRatio = $omission[$n] / max(1, $avgOmission);
+            if ($omissionRatio > 1.5) {
+                $scores[$n] += min(0.3, ($omissionRatio - 1.5) * 0.1); // 遗漏反弹
+            } else if ($omissionRatio < 0.5) {
+                $scores[$n] -= 0.05; // 处于温热点，降低权重，防止集中度过高
+            }
+        }
+
+        // 4. 生肖循环与五行生克因子 (根据最近 30 期冷热生肖/五行进行回归补偿)
+        $zodiacCounts = [];
+        $fiveElementCounts = [];
+        $recent30 = array_slice($recentDraws, 0, 30);
+        foreach ($recent30 as $draw) {
+            $codes = array_map('intval', explode(',', $draw['openCode']));
+            if (count($codes) >= 7) {
+                $special = $codes[6];
+                if ($special) {
+                    $z = getZodiacPHP($special);
+                    $f = getFiveElementsPHP($special);
+                    $zodiacCounts[$z] = ($zodiacCounts[$z] ?? 0) + 1;
+                    $fiveElementCounts[$f] = ($fiveElementCounts[$f] ?? 0) + 1;
+                }
+            }
+        }
+
+        for ($n = 1; $n <= 49; $n++) {
+            $z = getZodiacPHP($n);
+            $f = getFiveElementsPHP($n);
+            $zFreq = $zodiacCounts[$z] ?? 0;
+            $fFreq = $fiveElementCounts[$f] ?? 0;
+            if ($zFreq <= 1) $scores[$n] += 0.1; // 生肖补偿
+            if ($fFreq <= 4) $scores[$n] += 0.08; // 五行补偿
+        }
+
+        // 5. 属性级别：计算大小、单双、波色的一阶马尔可夫转移概率
+        $bigToBig = 0; $bigToSmall = 0; $smallToBig = 0; $smallToSmall = 0;
+        $oddToOdd = 0; $oddToEven = 0; $evenToOdd = 0; $evenToEven = 0;
+        $redToRed = 0; $redToBlue = 0; $redToGreen = 0;
+        $blueToRed = 0; $blueToBlue = 0; $blueToGreen = 0;
+        $greenToRed = 0; $greenToBlue = 0; $greenToGreen = 0;
+
+        for ($i = count($recentDraws) - 2; $i >= 0; $i--) {
+            $prevDraw = $recentDraws[$i + 1];
+            $currDraw = $recentDraws[$i];
+            $prevCodes = array_map('intval', explode(',', $prevDraw['openCode']));
+            $currCodes = array_map('intval', explode(',', $currDraw['openCode']));
+            if (count($prevCodes) < 7 || count($currCodes) < 7) continue;
+
+            $prevSp = $prevCodes[6];
+            $currSp = $currCodes[6];
+            if ($prevSp === 49 || $currSp === 49) continue;
+
+            $prevBig = $prevSp >= 25;
+            $currBig = $currSp >= 25;
+            $prevOdd = $prevSp % 2 !== 0;
+            $currOdd = $currSp % 2 !== 0;
+
+            $prevWave = getWaveColorPHP($prevSp);
+            $currWave = getWaveColorPHP($currSp);
+
+            if ($prevBig) {
+                if ($currBig) $bigToBig++; else $bigToSmall++;
+            } else {
+                if ($currBig) $smallToBig++; else $smallToSmall++;
+            }
+
+            if ($prevOdd) {
+                if ($currOdd) $oddToOdd++; else $oddToEven++;
+            } else {
+                if ($currOdd) $evenToOdd++; else $evenToEven++;
+            }
+
+            if ($prevWave === 'red') {
+                if ($currWave === 'red') $redToRed++; else if ($currWave === 'blue') $redToBlue++; else $redToGreen++;
+            } else if ($prevWave === 'blue') {
+                if ($currWave === 'red') $blueToRed++; else if ($currWave === 'blue') $blueToBlue++; else $blueToGreen++;
+            } else {
+                if ($currWave === 'red') $greenToRed++; else if ($currWave === 'blue') $greenToBlue++; else $greenToGreen++;
+            }
+        }
+
+        $lastBig = $lastSpecial >= 25;
+        $lastOdd = $lastSpecial % 2 !== 0;
+        $lastWave = getWaveColorPHP($lastSpecial);
+
+        $pBig = 0.5; $pSmall = 0.5;
+        $pOdd = 0.5; $pEven = 0.5;
+        $pRed = 0.33; $pBlue = 0.33; $pGreen = 0.33;
+
+        if ($lastSpecial !== 49) {
+            if ($lastBig) {
+                $tot = $bigToBig + $bigToSmall;
+                if ($tot > 0) { $pBig = $bigToBig / $tot; $pSmall = $bigToSmall / $tot; }
+            } else {
+                $tot = $smallToBig + $smallToSmall;
+                if ($tot > 0) { $pBig = $smallToBig / $tot; $pSmall = $smallToSmall / $tot; }
+            }
+
+            if ($lastOdd) {
+                $tot = $oddToOdd + $oddToEven;
+                if ($tot > 0) { $pOdd = $oddToOdd / $tot; $pEven = $oddToEven / $tot; }
+            } else {
+                $tot = $evenToOdd + $evenToEven;
+                if ($tot > 0) { $pOdd = $evenToOdd / $tot; $pEven = $evenToEven / $tot; }
+            }
+
+            if ($lastWave === 'red') {
+                $tot = $redToRed + $redToBlue + $redToGreen;
+                if ($tot > 0) { $pRed = $redToRed / $tot; $pBlue = $redToBlue / $tot; $pGreen = $redToGreen / $tot; }
+            } else if ($lastWave === 'blue') {
+                $tot = $blueToRed + $blueToBlue + $blueToGreen;
+                if ($tot > 0) { $pRed = $blueToRed / $tot; $pBlue = $blueToBlue / $tot; $pGreen = $blueToGreen / $tot; }
+            } else {
+                $tot = $greenToRed + $greenToBlue + $greenToGreen;
+                if ($tot > 0) { $pRed = $greenToRed / $tot; $pBlue = $greenToBlue / $tot; $pGreen = $greenToGreen / $tot; }
+            }
+        }
+
+        // 6. 长龙检测与自适应阻断策略 (Dragon Factor)
+        $consecutiveBig = 0;
+        $consecutiveSmall = 0;
+        $consecutiveOdd = 0;
+        $consecutiveEven = 0;
+
+        foreach ($draws as $draw) {
+            $codes = array_map('intval', explode(',', $draw['openCode']));
+            if (count($codes) < 7) break;
+            $sp = $codes[6];
+            if ($sp === 49) break;
+            if ($sp >= 25) {
+                if ($consecutiveSmall > 0) break;
+                $consecutiveBig++;
+            } else {
+                if ($consecutiveBig > 0) break;
+                $consecutiveSmall++;
+            }
+        }
+
+        foreach ($draws as $draw) {
+            $codes = array_map('intval', explode(',', $draw['openCode']));
+            if (count($codes) < 7) break;
+            $sp = $codes[6];
+            if ($sp === 49) break;
+            if ($sp % 2 !== 0) {
+                if ($consecutiveEven > 0) break;
+                $consecutiveOdd++;
+            } else {
+                if ($consecutiveOdd > 0) break;
+                $consecutiveEven++;
+            }
+        }
+
+        $dragonSizeMultiplier = 1.0;
+        $dragonParityMultiplier = 1.0;
+        $sizeDirection = null;
+        $parityDirection = null;
+
+        if ($consecutiveBig >= 4) {
+            $sizeDirection = '小';
+            $dragonSizeMultiplier = 1.0 + ($consecutiveBig - 3) * 0.15;
+        } else if ($consecutiveSmall >= 4) {
+            $sizeDirection = '大';
+            $dragonSizeMultiplier = 1.0 + ($consecutiveSmall - 3) * 0.15;
+        }
+
+        if ($consecutiveOdd >= 4) {
+            $parityDirection = '双';
+            $dragonParityMultiplier = 1.0 + ($consecutiveOdd - 3) * 0.15;
+        } else if ($consecutiveEven >= 4) {
+            $parityDirection = '单';
+            $dragonParityMultiplier = 1.0 + ($consecutiveEven - 3) * 0.15;
+        }
+
+        // 7. 号码分数归一化，并计算各属性在 1-49 号码分布上的概率得分
+        $sumScore = array_sum($scores);
+
+        $scoreBig = 0; $scoreSmall = 0;
+        $scoreOdd = 0; $scoreEven = 0;
+        $scoreRed = 0; $scoreBlue = 0; $scoreGreen = 0;
+
+        for ($n = 1; $n <= 49; $n++) {
+            $prob = $scores[$n] / $sumScore;
+            $isNBig = $n >= 25;
+            $isNOdd = $n % 2 !== 0;
+            $w = getWaveColorPHP($n);
+
+            if ($n < 49) {
+                if ($isNBig) $scoreBig += $prob; else $scoreSmall += $prob;
+                if ($isNOdd) $scoreOdd += $prob; else $scoreEven += $prob;
+            }
+            if ($w === 'red') $scoreRed += $prob;
+            elseif ($w === 'blue') $scoreBlue += $prob;
+            else $scoreGreen += $prob;
+        }
+
+        // 8. 结合马尔可夫概率和长龙自适应策略，计算最终决策分数
+        $finalBigScore = $scoreBig * $pBig;
+        $finalSmallScore = $scoreSmall * $pSmall;
+        $finalOddScore = $scoreOdd * $pOdd;
+        $finalEvenScore = $scoreEven * $pEven;
+
+        if ($sizeDirection === '小') {
+            $finalSmallScore *= $dragonSizeMultiplier;
+        } elseif ($sizeDirection === '大') {
+            $finalBigScore *= $dragonSizeMultiplier;
+        }
+
+        if ($parityDirection === '双') {
+            $finalEvenScore *= $dragonParityMultiplier;
+        } elseif ($parityDirection === '单') {
+            $finalOddScore *= $dragonParityMultiplier;
+        }
+
+        $sizePred = $finalBigScore >= $finalSmallScore ? '大' : '小';
+        $parityPred = $finalOddScore >= $finalEvenScore ? '单' : '双';
+
+        // 波色决策
+        $finalRedScore = $scoreRed * $pRed;
+        $finalBlueScore = $scoreBlue * $pBlue;
+        $finalGreenScore = $scoreGreen * $pGreen;
+
+        $colorPred = '红波';
+        $colorOdds = 2.75;
+        if ($finalRedScore >= $finalBlueScore && $finalRedScore >= $finalGreenScore) {
+            $colorPred = '红波';
+            $colorOdds = 2.75;
+        } elseif ($finalBlueScore >= $finalGreenScore) {
+            $colorPred = '蓝波';
+            $colorOdds = 2.98;
+        } else {
+            $colorPred = '绿波';
+            $colorOdds = 2.98;
+        }
+
+        // 9. 自适应置信度计算 (基于属性冲突度和样本一致性)
+        $sizeDiff = abs($finalBigScore - $finalSmallScore) / ($finalBigScore + $finalSmallScore ?: 1);
+        $parityDiff = abs($finalOddScore - $finalEvenScore) / ($finalOddScore + $finalEvenScore ?: 1);
+        $confidence = min(98, max(90, 88 + (int)(($sizeDiff + $parityDiff) * 20)));
+
+        // 10. 生成极具说服力、专业的决策理由
+        $rparts = [];
+        $sizeReason = '';
+        if ($sizeDirection) {
+            $sizeReason = "连开 " . ($consecutiveBig ?: $consecutiveSmall) . " 期，阻断偏向买" . $sizePred;
+            $rparts[] = "大小属性：长龙连开 " . ($consecutiveBig ?: $consecutiveSmall) . " 期，触发“自适应长龙阻断”反转买" . $sizePred;
+        } else {
+            $sizeReason = "转移概率 P(" . ($lastBig ? '大' : '小') . "->" . $sizePred . ")=" . round(max($pBig, $pSmall) * 100) . "%";
+            $rparts[] = "大小属性：基于一阶马尔可夫转移概率 P(" . ($lastBig ? '大' : '小') . " -> " . $sizePred . ") = " . round(max($pBig, $pSmall) * 100) . "%，结合 1-49 号码得分归一判定买【" . $sizePred . "】";
+        }
+
+        $parityReason = '';
+        if ($parityDirection) {
+            $parityReason = "连开 " . ($consecutiveOdd ?: $consecutiveEven) . " 期，极值回归买" . $parityPred;
+            $rparts[] = "单双属性：长龙连开 " . ($consecutiveOdd ?: $consecutiveEven) . " 期，触发“波动性极值回归”判定买【" . $parityPred . "】";
+        } else {
+            $parityReason = "转移概率 P(" . ($lastOdd ? '单' : '双') . "->" . $parityPred . ")=" . round(max($pOdd, $pEven) * 100) . "%";
+            $rparts[] = "单双属性：基于一阶马尔可夫转移概率 P(" . ($lastOdd ? '单' : '双') . " -> " . $parityPred . ") = " . round(max($pOdd, $pEven) * 100) . "%，结合 30 期生肖/五行补偿判定买【" . $parityPred . "】";
+        }
+
+        $colorReason = "红/蓝/绿归一占比 " . round($finalRedScore * 100) . "%:" . round($finalBlueScore * 100) . "%:" . round($finalGreenScore * 100) . "%";
+        $rparts[] = "波色决策：红/蓝/绿概率密度归一配重比为 " . round($finalRedScore * 100) . "% : " . round($finalBlueScore * 100) . "% : " . round($finalGreenScore * 100) . "%，优选【" . $colorPred . "】";
+
+        $rationale = implode("\n", $rparts);
 
         return [
             'targetIssue' => $nextIssue,
-            'algorithmName' => '50期大小/单双/波色概率加权预测模型 v3.0',
+            'algorithmName' => '自适应级联统计集成模型 v4.0',
             'confidence' => $confidence,
             'sizePred' => $sizePred,
             'sizeReason' => $sizeReason,

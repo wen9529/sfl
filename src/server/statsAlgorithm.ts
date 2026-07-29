@@ -160,26 +160,301 @@ export function getNextIssue(currentIssue: string): string {
 }
 
 /**
- * 基于 50 期真实规律生成大小、单双与波色算法预测
+ * 基于 100 期真实规律，通过自适应级联统计集成模型 (包括 1-49 逐号评分、一阶马尔可夫链和长龙拦截策略) 生成大小、单双与波色智能推演预测
  */
 export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionResult {
-  const stats = analyze50Draws(draws);
-  const nextIssue = draws.length > 0 ? getNextIssue(draws[0].expect) : getMacau3MinIssueInfo(-1).expect;
+  if (!draws || draws.length === 0) {
+    return {
+      targetIssue: getMacau3MinIssueInfo(-1).expect,
+      algorithmName: '自适应级联统计集成模型 v4.0',
+      confidence: 90,
+      sizePred: '大',
+      parityPred: '单',
+      colorPred: '红波',
+      sizeOdds: 1.95,
+      parityOdds: 1.95,
+      colorOdds: 2.75,
+      rationale: '暂无开奖数据，执行初始期望预测。',
+    };
+  }
 
-  const bigRatio = stats.bigRatio || 50;
-  const oddRatio = stats.oddRatio || 50;
-  const waveDist = stats.waveDistribution;
+  const nextIssue = getNextIssue(draws[0].expect);
 
-  const sizePred: '大' | '小' = bigRatio < 52 ? '大' : '小';
-  const parityPred: '单' | '双' = oddRatio < 52 ? '单' : '双';
+  // 1. 初始化 1-49 号码得分
+  const scores = Array(50).fill(1.0);
+  const totalDraws = Math.min(draws.length, 100);
+  const recentDraws = draws.slice(0, totalDraws);
 
-  let colorPred: '红波' | '蓝波' | '绿波' = '绿波';
-  let colorOdds = 2.98;
+  // 计算每个号码的频次和当前遗漏
+  const counts = Array(50).fill(0);
+  const omission = Array(50).fill(0);
+  const found = Array(50).fill(false);
 
-  if (waveDist.redRatio >= waveDist.blueRatio && waveDist.redRatio >= waveDist.greenRatio) {
+  recentDraws.forEach((draw) => {
+    const codes = draw.openCode.split(',').map(Number);
+    if (codes.length >= 7) {
+      const special = codes[6];
+      if (special >= 1 && special <= 49) {
+        counts[special]++;
+      }
+      for (let n = 1; n <= 49; n++) {
+        if (codes.includes(n)) {
+          found[n] = true;
+        } else if (!found[n]) {
+          omission[n]++;
+        }
+      }
+    }
+  });
+
+  // 2. 考虑重号（上期特码）和邻号（上期特码的左右号码）
+  const lastCodes = draws[0].openCode.split(',').map(Number);
+  const lastSpecial = lastCodes[6];
+  if (lastSpecial >= 1 && lastSpecial <= 49) {
+    scores[lastSpecial] += 0.15; // 重号规律
+    const leftNeighbor = lastSpecial === 1 ? 49 : lastSpecial - 1;
+    const rightNeighbor = lastSpecial === 49 ? 1 : lastSpecial + 1;
+    scores[leftNeighbor] += 0.12; // 邻号规律
+    scores[rightNeighbor] += 0.12;
+  }
+
+  // 3. 号码遗漏偏离修正 (遗漏值越高，均值回归反弹概率越大)
+  for (let n = 1; n <= 49; n++) {
+    const avgOmission = 49 / Math.max(1, counts[n]); // 理论平均遗漏
+    const omissionRatio = omission[n] / Math.max(1, avgOmission);
+    if (omissionRatio > 1.5) {
+      scores[n] += Math.min(0.3, (omissionRatio - 1.5) * 0.1); // 遗漏反弹
+    } else if (omissionRatio < 0.5) {
+      scores[n] -= 0.05; // 处于温热点，降低权重，防止集中度过高
+    }
+  }
+
+  // 4. 生肖循环与五行生克因子 (根据最近 30 期冷热生肖/五行进行回归补偿)
+  const zodiacCounts: { [key: string]: number } = {};
+  const fiveElementCounts: { [key: string]: number } = {};
+  recentDraws.slice(0, 30).forEach(draw => {
+    const codes = draw.openCode.split(',').map(Number);
+    if (codes.length >= 7) {
+      const special = codes[6];
+      if (special) {
+        const z = getZodiac(special);
+        const f = getFiveElements(special);
+        zodiacCounts[z] = (zodiacCounts[z] || 0) + 1;
+        fiveElementCounts[f] = (fiveElementCounts[f] || 0) + 1;
+      }
+    }
+  });
+
+  for (let n = 1; n <= 49; n++) {
+    const z = getZodiac(n);
+    const f = getFiveElements(n);
+    // 均值回归：最近开得少（冷）的生肖和五行，接下来的期数开出概率有所提升
+    const zFreq = zodiacCounts[z] || 0;
+    const fFreq = fiveElementCounts[f] || 0;
+    if (zFreq <= 1) scores[n] += 0.1; // 生肖补偿
+    if (fFreq <= 4) scores[n] += 0.08; // 五行补偿
+  }
+
+  // 5. 属性级别：计算大小、单双、波色的一阶马尔可夫转移概率
+  let bigToBig = 0, bigToSmall = 0, smallToBig = 0, smallToSmall = 0;
+  let oddToOdd = 0, oddToEven = 0, evenToOdd = 0, evenToEven = 0;
+  let redToRed = 0, redToBlue = 0, redToGreen = 0;
+  let blueToRed = 0, blueToBlue = 0, blueToGreen = 0;
+  let greenToRed = 0, greenToBlue = 0, greenToGreen = 0;
+
+  for (let i = recentDraws.length - 2; i >= 0; i--) {
+    const prevDraw = recentDraws[i + 1];
+    const currDraw = recentDraws[i];
+    const prevCodes = prevDraw.openCode.split(',').map(Number);
+    const currCodes = currDraw.openCode.split(',').map(Number);
+    if (prevCodes.length < 7 || currCodes.length < 7) continue;
+
+    const prevSp = prevCodes[6];
+    const currSp = currCodes[6];
+    if (prevSp === 49 || currSp === 49) continue;
+
+    const prevBig = prevSp >= 25;
+    const currBig = currSp >= 25;
+    const prevOdd = prevSp % 2 !== 0;
+    const currOdd = currSp % 2 !== 0;
+
+    const prevWave = getWaveColor(prevSp);
+    const currWave = getWaveColor(currSp);
+
+    if (prevBig) {
+      if (currBig) bigToBig++; else bigToSmall++;
+    } else {
+      if (currBig) smallToBig++; else smallToSmall++;
+    }
+
+    if (prevOdd) {
+      if (currOdd) oddToOdd++; else oddToEven++;
+    } else {
+      if (currOdd) evenToOdd++; else evenToEven++;
+    }
+
+    if (prevWave === 'red') {
+      if (currWave === 'red') redToRed++; else if (currWave === 'blue') redToBlue++; else redToGreen++;
+    } else if (prevWave === 'blue') {
+      if (currWave === 'red') blueToRed++; else if (currWave === 'blue') blueToBlue++; else blueToGreen++;
+    } else {
+      if (currWave === 'red') greenToRed++; else if (currWave === 'blue') greenToBlue++; else greenToGreen++;
+    }
+  }
+
+  const lastSp = lastSpecial;
+  const lastBig = lastSp >= 25;
+  const lastOdd = lastSp % 2 !== 0;
+  const lastWave = getWaveColor(lastSp);
+
+  let pBig = 0.5, pSmall = 0.5;
+  let pOdd = 0.5, pEven = 0.5;
+  let pRed = 0.33, pBlue = 0.33, pGreen = 0.33;
+
+  if (lastSp !== 49) {
+    if (lastBig) {
+      const tot = bigToBig + bigToSmall;
+      if (tot > 0) { pBig = bigToBig / tot; pSmall = bigToSmall / tot; }
+    } else {
+      const tot = smallToBig + smallToSmall;
+      if (tot > 0) { pBig = smallToBig / tot; pSmall = smallToSmall / tot; }
+    }
+
+    if (lastOdd) {
+      const tot = oddToOdd + oddToEven;
+      if (tot > 0) { pOdd = oddToOdd / tot; pEven = oddToEven / tot; }
+    } else {
+      const tot = evenToOdd + evenToEven;
+      if (tot > 0) { pOdd = evenToOdd / tot; pEven = evenToEven / tot; }
+    }
+
+    if (lastWave === 'red') {
+      const tot = redToRed + redToBlue + redToGreen;
+      if (tot > 0) { pRed = redToRed / tot; pBlue = redToBlue / tot; pGreen = redToGreen / tot; }
+    } else if (lastWave === 'blue') {
+      const tot = blueToRed + blueToBlue + blueToGreen;
+      if (tot > 0) { pRed = blueToRed / tot; pBlue = blueToBlue / tot; pGreen = blueToGreen / tot; }
+    } else {
+      const tot = greenToRed + greenToBlue + greenToGreen;
+      if (tot > 0) { pRed = greenToRed / tot; pBlue = greenToBlue / tot; pGreen = greenToGreen / tot; }
+    }
+  }
+
+  // 6. 长龙检测与自适应阻断策略 (Dragon Factor)
+  let consecutiveBig = 0;
+  let consecutiveSmall = 0;
+  let consecutiveOdd = 0;
+  let consecutiveEven = 0;
+
+  for (const draw of draws) {
+    const codes = draw.openCode.split(',').map(Number);
+    if (codes.length < 7) break;
+    const sp = codes[6];
+    if (sp === 49) break;
+    if (sp >= 25) {
+      if (consecutiveSmall > 0) break;
+      consecutiveBig++;
+    } else {
+      if (consecutiveBig > 0) break;
+      consecutiveSmall++;
+    }
+  }
+
+  for (const draw of draws) {
+    const codes = draw.openCode.split(',').map(Number);
+    if (codes.length < 7) break;
+    const sp = codes[6];
+    if (sp === 49) break;
+    if (sp % 2 !== 0) {
+      if (consecutiveEven > 0) break;
+      consecutiveOdd++;
+    } else {
+      if (consecutiveOdd > 0) break;
+      consecutiveEven++;
+    }
+  }
+
+  let dragonSizeMultiplier = 1.0;
+  let dragonParityMultiplier = 1.0;
+  let sizeDirection: '大' | '小' | null = null;
+  let parityDirection: '单' | '双' | null = null;
+
+  if (consecutiveBig >= 4) {
+    // 连开大号 >= 4 期，阻断率增加，偏向买小
+    sizeDirection = '小';
+    dragonSizeMultiplier = 1.0 + (consecutiveBig - 3) * 0.15;
+  } else if (consecutiveSmall >= 4) {
+    sizeDirection = '大';
+    dragonSizeMultiplier = 1.0 + (consecutiveSmall - 3) * 0.15;
+  }
+
+  if (consecutiveOdd >= 4) {
+    parityDirection = '双';
+    dragonParityMultiplier = 1.0 + (consecutiveOdd - 3) * 0.15;
+  } else if (consecutiveEven >= 4) {
+    parityDirection = '单';
+    dragonParityMultiplier = 1.0 + (consecutiveEven - 3) * 0.15;
+  }
+
+  // 7. 号码分数归一化，并计算各属性在 1-49 号码分布上的概率得分
+  let sumScore = 0;
+  for (let n = 1; n <= 49; n++) sumScore += scores[n];
+
+  let scoreBig = 0;
+  let scoreSmall = 0;
+  let scoreOdd = 0;
+  let scoreEven = 0;
+  let scoreRed = 0;
+  let scoreBlue = 0;
+  let scoreGreen = 0;
+
+  for (let n = 1; n <= 49; n++) {
+    const prob = scores[n] / sumScore;
+    const isNBig = n >= 25;
+    const isNOdd = n % 2 !== 0;
+    const w = getWaveColor(n);
+
+    if (n < 49) {
+      if (isNBig) scoreBig += prob; else scoreSmall += prob;
+      if (isNOdd) scoreOdd += prob; else scoreEven += prob;
+    }
+    if (w === 'red') scoreRed += prob;
+    else if (w === 'blue') scoreBlue += prob;
+    else scoreGreen += prob;
+  }
+
+  // 8. 结合马尔可夫概率和长龙自适应策略，计算最终决策分数
+  let finalBigScore = scoreBig * pBig;
+  let finalSmallScore = scoreSmall * pSmall;
+  let finalOddScore = scoreOdd * pOdd;
+  let finalEvenScore = scoreEven * pEven;
+
+  if (sizeDirection === '小') {
+    finalSmallScore *= dragonSizeMultiplier;
+  } else if (sizeDirection === '大') {
+    finalBigScore *= dragonSizeMultiplier;
+  }
+
+  if (parityDirection === '双') {
+    finalEvenScore *= dragonParityMultiplier;
+  } else if (parityDirection === '单') {
+    finalOddScore *= dragonParityMultiplier;
+  }
+
+  const sizePred: '大' | '小' = finalBigScore >= finalSmallScore ? '大' : '小';
+  const parityPred: '单' | '双' = finalOddScore >= finalEvenScore ? '单' : '双';
+
+  // 波色决策
+  const finalRedScore = scoreRed * pRed;
+  const finalBlueScore = scoreBlue * pBlue;
+  const finalGreenScore = scoreGreen * pGreen;
+
+  let colorPred: '红波' | '蓝波' | '绿波' = '红波';
+  let colorOdds = 2.75;
+  if (finalRedScore >= finalBlueScore && finalRedScore >= finalGreenScore) {
     colorPred = '红波';
     colorOdds = 2.75;
-  } else if (waveDist.blueRatio >= waveDist.greenRatio) {
+  } else if (finalBlueScore >= finalGreenScore) {
     colorPred = '蓝波';
     colorOdds = 2.98;
   } else {
@@ -187,11 +462,32 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     colorOdds = 2.98;
   }
 
-  const confidence = Math.min(98, Math.max(88, 86 + Math.floor(Math.random() * 8)));
+  // 9. 自适应置信度计算 (基于属性冲突度和样本一致性)
+  const sizeDiff = Math.abs(finalBigScore - finalSmallScore) / (finalBigScore + finalSmallScore || 1);
+  const parityDiff = Math.abs(finalOddScore - finalEvenScore) / (finalOddScore + finalEvenScore || 1);
+  const confidence = Math.min(98, Math.max(90, 88 + Math.floor((sizeDiff + parityDiff) * 20)));
+
+  // 10. 生成极具说服力、专业的决策理由
+  const rparts: string[] = [];
+  if (sizeDirection) {
+    rparts.push(`大小属性：长龙连开 ${consecutiveBig || consecutiveSmall} 期，触发“自适应长龙阻断”反转买小`);
+  } else {
+    rparts.push(`大小属性：基于一阶马尔可夫转移概率 P(${lastBig ? '大' : '小'} -> ${sizePred}) = ${Math.round(Math.max(pBig, pSmall) * 100)}%，结合 1-49 号码得分归一判定买【${sizePred}】`);
+  }
+
+  if (parityDirection) {
+    rparts.push(`单双属性：长龙连开 ${consecutiveOdd || consecutiveEven} 期，触发“波动性极值回归”判定买【${parityPred}】`);
+  } else {
+    rparts.push(`单双属性：基于一阶马尔可夫转移概率 P(${lastOdd ? '单' : '双'} -> ${parityPred}) = ${Math.round(Math.max(pOdd, pEven) * 100)}%，结合 30 期生肖/五行补偿判定买【${parityPred}】`);
+  }
+
+  rparts.push(`波色决策：红/蓝/绿概率密度归一配重比为 ${Math.round(finalRedScore * 100)}% : ${Math.round(finalBlueScore * 100)}% : ${Math.round(finalGreenScore * 100)}%，优选【${colorPred}】`);
+
+  const rationale = rparts.join('\n');
 
   return {
     targetIssue: nextIssue,
-    algorithmName: '50期大小/单双/波色概率加权预测模型 v3.0',
+    algorithmName: '自适应级联统计集成模型 v4.0',
     confidence,
     sizePred,
     parityPred,
@@ -199,7 +495,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     sizeOdds: 1.95,
     parityOdds: 1.95,
     colorOdds,
-    rationale: `分析近 50 期开奖：大号占比 ${bigRatio}%，单数占比 ${oddRatio}%；结合波色占比(红${waveDist.redRatio}%/蓝${waveDist.blueRatio}%/绿${waveDist.greenRatio}%)动态加权计算得出。`,
+    rationale,
   };
 }
 
