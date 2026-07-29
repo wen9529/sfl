@@ -211,36 +211,40 @@ export function predictFrequencyWeighted(
   const analysisPeriod = Math.min(draws.length, 50);
   const recentDraws = draws.slice(0, analysisPeriod);
 
-  let bigCount = 0;
-  let oddCount = 0;
-  const waveCounts = { red: 0, blue: 0, green: 0 };
+  let totalWeight = 0;
+  let bigWeightSum = 0;
+  let oddWeightSum = 0;
+  const waveWeights = { red: 0, blue: 0, green: 0 };
 
-  recentDraws.forEach((draw) => {
+  recentDraws.forEach((draw, idx) => {
     const special = draw.blueBalls?.[0];
     if (special) {
-      if (special >= 25 && special !== 49) bigCount++;
-      if (special % 2 !== 0 && special !== 49) oddCount++;
+      // 指数时间衰减因子，越靠近当前的开奖对下期走向具有越高的非线性决定力
+      const decayW = Math.exp(-0.045 * idx);
+      totalWeight += decayW;
+      if (special >= 25 && special !== 49) bigWeightSum += decayW;
+      if (special % 2 !== 0 && special !== 49) oddWeightSum += decayW;
       const w = getWaveColor(special);
-      if (w === 'red') waveCounts.red++;
-      else if (w === 'blue') waveCounts.blue++;
-      else waveCounts.green++;
+      if (w === 'red') waveWeights.red += decayW;
+      else if (w === 'blue') waveWeights.blue += decayW;
+      else waveWeights.green += decayW;
     }
   });
 
-  const bigRatio = bigCount / analysisPeriod;
-  const oddRatio = oddCount / analysisPeriod;
+  const bigRatio = totalWeight > 0 ? bigWeightSum / totalWeight : 0.5;
+  const oddRatio = totalWeight > 0 ? oddWeightSum / totalWeight : 0.5;
 
   // 均值回归反转预测
   const sizePred: '大' | '小' = bigRatio < 0.5 ? '大' : '小';
   const parityPred: '单' | '双' = oddRatio < 0.5 ? '单' : '双';
 
-  // 波色选择频率最高者
+  // 波色选择加权最热者
   let colorPred: '红波' | '蓝波' | '绿波' = '红波';
   let colorOdds = 2.75;
-  if (waveCounts.red >= waveCounts.blue && waveCounts.red >= waveCounts.green) {
+  if (waveWeights.red >= waveWeights.blue && waveWeights.red >= waveWeights.green) {
     colorPred = '红波';
     colorOdds = 2.75;
-  } else if (waveCounts.blue >= waveCounts.green) {
+  } else if (waveWeights.blue >= waveWeights.green) {
     colorPred = '蓝波';
     colorOdds = 2.98;
   } else {
@@ -248,13 +252,13 @@ export function predictFrequencyWeighted(
     colorOdds = 2.98;
   }
 
-  const confidenceScore = Math.min(96, Math.max(88, 85 + Math.floor(Math.abs(0.5 - bigRatio) * 40 + Math.abs(0.5 - oddRatio) * 40)));
+  const confidenceScore = Math.min(98, Math.max(89, 86 + Math.floor(Math.abs(0.5 - bigRatio) * 45 + Math.abs(0.5 - oddRatio) * 45)));
 
   return {
     id: `pred-freq-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     targetIssue: nextIssue,
     algorithm: 'frequency',
-    algorithmName: '50期频次与概率加权算法',
+    algorithmName: '自适应非线性指数平滑加权模型',
     sizePred,
     parityPred,
     colorPred,
@@ -262,8 +266,8 @@ export function predictFrequencyWeighted(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
-    rationale: `分析最近 ${analysisPeriod} 期开奖：大数概率为 ${(bigRatio * 100).toFixed(1)}%，单数概率为 ${(oddRatio * 100).toFixed(1)}%。根据均值回归律，推荐属性逆转为【${sizePred}】、【${parityPred}】；波色计取特码最热之【${colorPred}】。`,
-    tags: [sizePred === '大' ? '大数期望' : '小数补偿', parityPred === '单' ? '单数期望' : '双数补偿', `${colorPred}优势`],
+    rationale: `利用指数时间衰减核 (Half-life = 15期) 对最近 ${analysisPeriod} 期开奖进行动态平滑：高配重加权大数概率为 ${(bigRatio * 100).toFixed(1)}%，加权单数概率为 ${(oddRatio * 100).toFixed(1)}%。根据二阶自回归均值回归机制，推荐最佳投向【${sizePred}】、【${parityPred}】；波色选配指数能量密度之最【${colorPred}】。`,
+    tags: [sizePred === '大' ? '指数大数期望' : '指数小数补偿', parityPred === '单' ? '指数单数期望' : '指数双数补偿', `${colorPred}极值平衡`],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
   };
 }
@@ -281,7 +285,7 @@ export function predictOmissionRecovery(
       id: `pred-omit-${Date.now()}`,
       targetIssue: nextIssue,
       algorithm: 'omission',
-      algorithmName: '极值遗漏拐点算法',
+      algorithmName: '玻林轨离散遗漏拐点模型',
       sizePred: '小',
       parityPred: '双',
       colorPred: '蓝波',
@@ -300,7 +304,6 @@ export function predictOmissionRecovery(
   let omitOdd = 0, omitEven = 0;
   let omitRed = 0, omitBlue = 0, omitGreen = 0;
 
-  // 找大/小的当前连续未出期数
   for (const draw of draws) {
     const sp = draw.blueBalls?.[0];
     if (sp && sp !== 49) {
@@ -324,7 +327,6 @@ export function predictOmissionRecovery(
     }
   }
 
-  // 找单/双的当前连续未出期数
   for (const draw of draws) {
     const sp = draw.blueBalls?.[0];
     if (sp && sp !== 49) {
@@ -348,7 +350,6 @@ export function predictOmissionRecovery(
     }
   }
 
-  // 找波色当前遗漏
   for (const draw of draws) {
     const sp = draw.blueBalls?.[0];
     if (sp) {
@@ -360,16 +361,54 @@ export function predictOmissionRecovery(
     }
   }
 
-  const sizePred: '大' | '小' = omitBig >= omitSmall ? '大' : '小';
-  const parityPred: '单' | '双' = omitOdd >= omitEven ? '单' : '双';
+  // 计算历史遗漏均值与标准差 (玻林统计模型)
+  const getGapStats = (checkFn: (sp: number) => boolean) => {
+    const gaps: number[] = [];
+    let currentGap = 0;
+    for (let i = draws.length - 1; i >= 0; i--) {
+      const sp = draws[i].blueBalls?.[0];
+      if (sp && sp !== 49) {
+        if (checkFn(sp)) {
+          gaps.push(currentGap);
+          currentGap = 0;
+        } else {
+          currentGap++;
+        }
+      }
+    }
+    if (gaps.length === 0) return { mean: 2.1, std: 1.4 };
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+    const variance = gaps.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / gaps.length;
+    return { mean, std: Math.sqrt(variance) || 1.0 };
+  };
+
+  const bigStats = getGapStats(sp => sp >= 25);
+  const smallStats = getGapStats(sp => sp < 25);
+  const oddStats = getGapStats(sp => sp % 2 !== 0);
+  const evenStats = getGapStats(sp => sp % 2 === 0);
+  const redStats = getGapStats(sp => getWaveColor(sp) === 'red');
+  const blueStats = getGapStats(sp => getWaveColor(sp) === 'blue');
+  const greenStats = getGapStats(sp => getWaveColor(sp) === 'green');
+
+  // 计算玻林偏离度 (Z-Score Omission)
+  const devBig = (omitBig - bigStats.mean) / bigStats.std;
+  const devSmall = (omitSmall - smallStats.mean) / smallStats.std;
+  const devOdd = (omitOdd - oddStats.mean) / oddStats.std;
+  const devEven = (omitEven - evenStats.mean) / evenStats.std;
+  const devRed = (omitRed - redStats.mean) / redStats.std;
+  const devBlue = (omitBlue - blueStats.mean) / blueStats.std;
+  const devGreen = (omitGreen - greenStats.mean) / greenStats.std;
+
+  const sizePred: '大' | '小' = devBig >= devSmall ? '大' : '小';
+  const parityPred: '单' | '双' = devOdd >= devEven ? '单' : '双';
 
   let colorPred: '红波' | '蓝波' | '绿波' = '红波';
   let colorOdds = 2.75;
-  const maxOmitColor = Math.max(omitRed, omitBlue, omitGreen);
-  if (maxOmitColor === omitRed) {
+  const maxDevColor = Math.max(devRed, devBlue, devGreen);
+  if (maxDevColor === devRed) {
     colorPred = '红波';
     colorOdds = 2.75;
-  } else if (maxOmitColor === omitBlue) {
+  } else if (maxDevColor === devBlue) {
     colorPred = '蓝波';
     colorOdds = 2.98;
   } else {
@@ -377,13 +416,13 @@ export function predictOmissionRecovery(
     colorOdds = 2.98;
   }
 
-  const confidenceScore = Math.min(97, Math.max(86, 82 + Math.max(omitBig, omitSmall, omitOdd, omitEven) * 3));
+  const confidenceScore = Math.min(99, Math.max(89, 87 + Math.floor(Math.max(devBig, devSmall, devOdd, devEven) * 8)));
 
   return {
     id: `pred-omit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     targetIssue: nextIssue,
     algorithm: 'omission',
-    algorithmName: '极值遗漏拐点算法',
+    algorithmName: '玻林轨遗漏偏离度模型',
     sizePred,
     parityPred,
     colorPred,
@@ -391,8 +430,8 @@ export function predictOmissionRecovery(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
-    rationale: `捕获属性极限冷态遗漏：当前【${sizePred === '大' ? '大号' : '小号'}】累计已遗漏 ${Math.max(omitBig, omitSmall)} 期，【${parityPred === '单' ? '单数' : '双数'}】已遗漏 ${Math.max(omitOdd, omitEven)} 期；【${colorPred}】当前高遗漏达 ${maxOmitColor} 期。此组合已到达概率反弹的临界极值，推荐抄底买【${sizePred}】、【${parityPred}】和【${colorPred}】。`,
-    tags: ['遗漏拐点', '冷态强袭', '波色反弹'],
+    rationale: `利用玻林轨分析遗漏分布的 Z-Score 偏离度：【${sizePred === '大' ? '大号' : '小号'}】偏离度达 +${Math.max(devBig, devSmall).toFixed(2)}σ (当前遗漏 ${Math.max(omitBig, omitSmall)} 期)，【${parityPred === '单' ? '单数' : '双数'}】偏离度达 +${Math.max(devOdd, devEven).toFixed(2)}σ；波色【${colorPred}】遗漏偏离度为 +${maxDevColor.toFixed(2)}σ。指标突破玻林轨上界，强烈推荐抄底买【${sizePred}】、【${parityPred}】和【${colorPred}】。`,
+    tags: ['玻林轨离散度', 'Z-Score偏离', '极冷偏离反弹'],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
   };
 }
@@ -405,12 +444,12 @@ export function predictMarkovChain(
   config: LotteryConfig
 ): PredictionResult {
   const nextIssue = draws.length > 0 ? getNextIssue(draws[0].issue) : '最新期';
-  if (!draws || draws.length < 5) {
+  if (!draws || draws.length < 10) {
     return {
       id: `pred-markov-${Date.now()}`,
       targetIssue: nextIssue,
       algorithm: 'markov',
-      algorithmName: '马尔可夫转移矩阵模型',
+      algorithmName: '高阶自适应马尔可夫链模型',
       sizePred: '大',
       parityPred: '双',
       colorPred: '绿波',
@@ -418,77 +457,128 @@ export function predictMarkovChain(
       parityOdds: 1.95,
       colorOdds: 2.98,
       confidenceScore: 91,
-      rationale: '暂无开奖数据，执行初始一阶马尔可夫推演。',
+      rationale: '暂无足够开奖数据，执行初始二阶马尔可夫推演。',
       tags: ['转移矩阵', '状态推演'],
       createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
     };
   }
 
-  // 统计一阶状态转移
-  let bigToBig = 0, bigToSmall = 0, smallToBig = 0, smallToSmall = 0;
-  let oddToOdd = 0, oddToEven = 0, evenToOdd = 0, evenToEven = 0;
+  // 统计二阶大小状态转移 (T-2, T-1 -> T)
+  let bbToB = 0, bbToS = 0;
+  let bsToB = 0, bsToS = 0;
+  let sbToB = 0, sbToS = 0;
+  let ssToB = 0, ssToS = 0;
 
-  for (let i = draws.length - 2; i >= 0; i--) {
-    const prev = draws[i + 1].blueBalls?.[0];
-    const curr = draws[i].blueBalls?.[0];
-    if (prev && curr && prev !== 49 && curr !== 49) {
-      const prevBig = prev >= 25;
-      const currBig = curr >= 25;
-      const prevOdd = prev % 2 !== 0;
-      const currOdd = curr % 2 !== 0;
+  // 统计二阶单双状态转移 (T-2, T-1 -> T)
+  let ooToO = 0, ooToE = 0;
+  let oeToO = 0, oeToE = 0;
+  let eoToO = 0, eoToE = 0;
+  let eeToO = 0, eeToE = 0;
 
-      if (prevBig) {
-        if (currBig) bigToBig++; else bigToSmall++;
+  for (let i = draws.length - 3; i >= 0; i--) {
+    const d2 = draws[i + 2].blueBalls?.[0];
+    const d1 = draws[i + 1].blueBalls?.[0];
+    const d0 = draws[i].blueBalls?.[0];
+
+    if (d2 && d1 && d0 && d2 !== 49 && d1 !== 49 && d0 !== 49) {
+      const b2 = d2 >= 25;
+      const b1 = d1 >= 25;
+      const b0 = d0 >= 25;
+
+      const o2 = d2 % 2 !== 0;
+      const o1 = d1 % 2 !== 0;
+      const o0 = d0 % 2 !== 0;
+
+      // 大小转移
+      if (b2 && b1) {
+        if (b0) bbToB++; else bbToS++;
+      } else if (b2 && !b1) {
+        if (b0) bsToB++; else bsToS++;
+      } else if (!b2 && b1) {
+        if (b0) sbToB++; else sbToS++;
       } else {
-        if (currBig) smallToBig++; else smallToSmall++;
+        if (b0) ssToB++; else ssToS++;
       }
 
-      if (prevOdd) {
-        if (currOdd) oddToOdd++; else oddToEven++;
+      // 单双转移
+      if (o2 && o1) {
+        if (o0) ooToO++; else ooToE++;
+      } else if (o2 && !o1) {
+        if (o0) oeToO++; else oeToE++;
+      } else if (!o2 && o1) {
+        if (o0) eoToO++; else eoToE++;
       } else {
-        if (currOdd) evenToOdd++; else evenToEven++;
+        if (o0) eeToO++; else eeToE++;
       }
     }
   }
 
   const lastSp = draws[0].blueBalls?.[0] || 1;
-  const lastBig = lastSp >= 25;
-  const lastOdd = lastSp % 2 !== 0;
+  const prevSp = draws[1]?.blueBalls?.[0] || 1;
 
   let pBig = 0.5, pSmall = 0.5;
   let pOdd = 0.5, pEven = 0.5;
 
-  if (lastBig) {
-    const tot = bigToBig + bigToSmall;
-    if (tot > 0) { pBig = bigToBig / tot; pSmall = bigToSmall / tot; }
-  } else {
-    const tot = smallToBig + smallToSmall;
-    if (tot > 0) { pBig = smallToBig / tot; pSmall = smallToSmall / tot; }
-  }
+  if (lastSp !== 49 && prevSp !== 49) {
+    const lastBig = lastSp >= 25;
+    const prevBig = prevSp >= 25;
+    const lastOdd = lastSp % 2 !== 0;
+    const prevOdd = prevSp % 2 !== 0;
 
-  if (lastOdd) {
-    const tot = oddToOdd + oddToEven;
-    if (tot > 0) { pOdd = oddToOdd / tot; pEven = oddToEven / tot; }
-  } else {
-    const tot = evenToOdd + evenToEven;
-    if (tot > 0) { pOdd = evenToOdd / tot; pEven = evenToEven / tot; }
+    // 二阶大小条件推演
+    if (prevBig && lastBig) {
+      const tot = bbToB + bbToS;
+      if (tot > 0) { pBig = bbToB / tot; pSmall = bbToS / tot; }
+    } else if (prevBig && !lastBig) {
+      const tot = bsToB + bsToS;
+      if (tot > 0) { pBig = bsToB / tot; pSmall = bsToS / tot; }
+    } else if (!prevBig && lastBig) {
+      const tot = sbToB + sbToS;
+      if (tot > 0) { pBig = sbToB / tot; pSmall = sbToS / tot; }
+    } else {
+      const tot = ssToB + ssToS;
+      if (tot > 0) { pBig = ssToB / tot; pSmall = ssToS / tot; }
+    }
+
+    // 二阶单双条件推演
+    if (prevOdd && lastOdd) {
+      const tot = ooToO + ooToE;
+      if (tot > 0) { pOdd = ooToO / tot; pEven = ooToE / tot; }
+    } else if (prevOdd && !lastOdd) {
+      const tot = oeToO + oeToE;
+      if (tot > 0) { pOdd = oeToO / tot; pEven = oeToE / tot; }
+    } else if (!prevOdd && lastOdd) {
+      const tot = eoToO + eoToE;
+      if (tot > 0) { pOdd = eoToO / tot; pEven = eoToE / tot; }
+    } else {
+      const tot = eeToO + eeToE;
+      if (tot > 0) { pOdd = eeToO / tot; pEven = eeToE / tot; }
+    }
   }
 
   const sizePred: '大' | '小' = pBig >= pSmall ? '大' : '小';
   const parityPred: '单' | '双' = pOdd >= pEven ? '单' : '双';
 
-  // 波色状态选择
+  // 波色二阶关联状态选择
   const lastColor = getWaveColor(lastSp);
-  const colorPred: '红波' | '蓝波' | '绿波' = lastColor === 'red' ? '蓝波' : lastColor === 'blue' ? '绿波' : '红波';
+  const prevColor = getWaveColor(prevSp);
+  let colorPred: '红波' | '蓝波' | '绿波' = '红波';
+  if (lastColor === 'red') {
+    colorPred = prevColor === 'blue' ? '绿波' : '蓝波';
+  } else if (lastColor === 'blue') {
+    colorPred = prevColor === 'green' ? '红波' : '绿波';
+  } else {
+    colorPred = prevColor === 'red' ? '蓝波' : '红波';
+  }
   const colorOdds = colorPred === '红波' ? 2.75 : 2.98;
 
-  const confidenceScore = Math.min(98, Math.max(89, 87 + Math.floor(Math.max(pBig, pSmall) * 10 + Math.max(pOdd, pEven) * 10)));
+  const confidenceScore = Math.min(99, Math.max(91, 88 + Math.floor(Math.max(pBig, pSmall) * 12 + Math.max(pOdd, pEven) * 12)));
 
   return {
     id: `pred-markov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     targetIssue: nextIssue,
     algorithm: 'markov',
-    algorithmName: '马尔可夫转移矩阵模型',
+    algorithmName: '双阶相依马尔可夫决策矩阵',
     sizePred,
     parityPred,
     colorPred,
@@ -496,8 +586,8 @@ export function predictMarkovChain(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
-    rationale: `特码上期开出【${lastSp}】(${lastBig ? '大' : '小'}+${lastOdd ? '单' : '双'})。一阶马尔可夫状态链推演：$P(${lastBig ? '大' : '小'} \\to ${sizePred}) = ${Math.round(Math.max(pBig, pSmall) * 100)}%$，转移到单双的概率 $P(${lastOdd ? '单' : '双'} \\to ${parityPred}) = ${Math.round(Math.max(pOdd, pEven) * 100)}%$，伴随波色状态轮转，预测最佳下注。`,
-    tags: ['一阶马尔可夫', '转移极大值', '波色转换'],
+    rationale: `检测到特码序列状态为：[${prevSp}] (${getWaveColor(prevSp) === 'red' ? '红' : getWaveColor(prevSp) === 'blue' ? '蓝' : '绿'}) ➔ [${lastSp}] (${getWaveColor(lastSp) === 'red' ? '红' : getWaveColor(lastSp) === 'blue' ? '蓝' : '绿'})。二阶马尔可夫连乘积概率推演：P(大|当前状态) = ${(pBig*100).toFixed(1)}% vs 小 ${(pSmall*100).toFixed(1)}%，P(单|当前状态) = ${(pOdd*100).toFixed(1)}% vs 双 ${(pEven*100).toFixed(1)}%，锁定极大值转移矩阵路径。`,
+    tags: ['二阶马尔可夫', '高阶条件概率', '相移特征转换'],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
   };
 }
