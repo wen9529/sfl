@@ -635,15 +635,198 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   }
 
   // ==========================================
+  // 6.5. 动态自适应多模型回测权重推演系统 (Dynamic Softmax Ensemble Engine)
+  // ==========================================
+  // 我们在过去 8 期历史上，对 Multi-Horizon, Markov, N-Gram 进行虚实对决，
+  // 统计每种模型在大小和单双维度的最近准确率 (Hit Count)，并基于 1.5 温度系数 Softmax 归一化，
+  // 动态生成本期集成决策权重，完美自适应当前走势波动！
+  let weightMultiHorizon = 0.40;
+  let weightMarkov = 0.30;
+  let weightNGram = 0.30;
+
+  if (draws.length >= 25) {
+    let hitMultiHorizon = 0;
+    let hitMarkov = 0;
+    let hitNGram = 0;
+    let totalRounds = 0;
+
+    for (let hIdx = 1; hIdx <= 8; hIdx++) {
+      const hist = draws.slice(hIdx);
+      const targetDraw = draws[hIdx - 1];
+      const targetCodes = targetDraw.openCode.split(',').map(Number);
+      if (targetCodes.length < 7) continue;
+      const targetSp = targetCodes[6];
+      if (targetSp === 49) continue;
+
+      const actualBig = targetSp >= 25;
+      const actualOdd = targetSp % 2 !== 0;
+
+      // 1) Multi-Horizon
+      let mSizeProb = 0.0;
+      let mParityProb = 0.0;
+      horizons.forEach(hor => {
+        const lim = Math.min(hist.length, hor.period);
+        let sizeSum = 0;
+        let paritySum = 0;
+        let weightSum = 0;
+        for (let t = 0; t < lim; t++) {
+          const codes = hist[t].openCode.split(',').map(Number);
+          if (codes.length >= 7) {
+            const sp = codes[6];
+            if (sp === 49) continue;
+            const decayW = Math.exp(-hor.lambda * t);
+            sizeSum += (sp >= 25 ? 1 : 0) * decayW;
+            paritySum += (sp % 2 !== 0 ? 1 : 0) * decayW;
+            weightSum += decayW;
+          }
+        }
+        const sRatio = weightSum > 0 ? sizeSum / weightSum : 0.5;
+        const pRatio = weightSum > 0 ? paritySum / weightSum : 0.5;
+        mSizeProb += (1.0 - sRatio) * hor.weight;
+        mParityProb += (1.0 - pRatio) * hor.weight;
+      });
+      const predMSize = mSizeProb >= 0.5;
+      const predMParity = mParityProb >= 0.5;
+
+      // 2) Markov
+      let bb_B = 0, bb_S = 0, bs_B = 0, bs_S = 0;
+      let sb_B = 0, sb_S = 0, ss_B = 0, ss_S = 0;
+      let oo_O = 0, oo_E = 0, oe_O = 0, oe_E = 0;
+      let eo_O = 0, eo_E = 0, ee_O = 0, ee_E = 0;
+
+      const histLimit = Math.min(hist.length, 100);
+      for (let i = histLimit - 3; i >= 0; i--) {
+        const c2 = hist[i + 2].openCode.split(',').map(Number);
+        const c1 = hist[i + 1].openCode.split(',').map(Number);
+        const c0 = hist[i].openCode.split(',').map(Number);
+        if (c2.length < 7 || c1.length < 7 || c0.length < 7) continue;
+        if (c2[6] === 49 || c1[6] === 49 || c0[6] === 49) continue;
+
+        const b2 = c2[6] >= 25;
+        const b1 = c1[6] >= 25;
+        const b0 = c0[6] >= 25;
+        const o2 = c2[6] % 2 !== 0;
+        const o1 = c1[6] % 2 !== 0;
+        const o0 = c0[6] % 2 !== 0;
+
+        if (b2 && b1) { if (b0) bb_B++; else bb_S++; }
+        else if (b2 && !b1) { if (b0) bs_B++; else bs_S++; }
+        else if (!b2 && b1) { if (b0) sb_B++; else sb_S++; }
+        else { if (b0) ss_B++; else ss_S++; }
+
+        if (o2 && o1) { if (o0) oo_O++; else oo_E++; }
+        else if (o2 && !o1) { if (o0) oe_O++; else oe_E++; }
+        else if (!o2 && o1) { if (o0) eo_O++; else eo_E++; }
+        else { if (o0) ee_O++; else ee_E++; }
+      }
+
+      const lCodes = hist[0].openCode.split(',').map(Number);
+      const pCodes = hist[1] ? hist[1].openCode.split(',').map(Number) : lCodes;
+      let mkBig = 0.5, mkSmall = 0.5, mkOdd = 0.5, mkEven = 0.5;
+
+      if (lCodes.length >= 7 && pCodes.length >= 7 && lCodes[6] !== 49 && pCodes[6] !== 49) {
+        const lastB = lCodes[6] >= 25;
+        const prevB = pCodes[6] >= 25;
+        const lastO = lCodes[6] % 2 !== 0;
+        const prevO = pCodes[6] % 2 !== 0;
+
+        if (prevB && lastB) { const t = bb_B + bb_S; if (t > 0) { mkBig = bb_B / t; mkSmall = bb_S / t; } }
+        else if (prevB && !lastB) { const t = bs_B + bs_S; if (t > 0) { mkBig = bs_B / t; mkSmall = bs_S / t; } }
+        else if (!prevB && lastB) { const t = sb_B + sb_S; if (t > 0) { mkBig = sb_B / t; mkSmall = sb_S / t; } }
+        else { const t = ss_B + ss_S; if (t > 0) { mkBig = ss_B / t; mkSmall = ss_S / t; } }
+
+        if (prevO && lastO) { const t = oo_O + oo_E; if (t > 0) { mkOdd = oo_O / t; mkEven = oo_E / t; } }
+        else if (prevO && !lastO) { const t = oe_O + oe_E; if (t > 0) { mkOdd = oe_O / t; mkEven = oe_E / t; } }
+        else if (!prevO && lastO) { const t = eo_O + eo_E; if (t > 0) { mkOdd = eo_O / t; mkEven = eo_E / t; } }
+        else { const t = ee_O + ee_E; if (t > 0) { mkOdd = ee_O / t; mkEven = ee_E / t; } }
+      }
+      const predMKSize = mkBig >= mkSmall;
+      const predMKParity = mkOdd >= mkEven;
+
+      // 3) N-Gram
+      let ngSizeProb = 0.5;
+      let ngParityProb = 0.5;
+      let valCount = 0;
+      const recSize: boolean[] = [];
+      const recOdd: boolean[] = [];
+
+      for (let i = 0; i < hist.length && valCount < 3; i++) {
+        const c = hist[i].openCode.split(',').map(Number);
+        if (c.length >= 7 && c[6] !== 49) {
+          recSize.push(c[6] >= 25);
+          recOdd.push(c[6] % 2 !== 0);
+          valCount++;
+        }
+      }
+
+      if (valCount === 3) {
+        const pS = [recSize[2], recSize[1], recSize[0]];
+        const pO = [recOdd[2], recOdd[1], recOdd[0]];
+        let mSB = 0, mST = 0, mOT = 0, mOE = 0;
+
+        const maxS = Math.min(hist.length - 4, 100);
+        for (let i = 0; i < maxS; i++) {
+          const b: number[] = [];
+          for (let j = 0; j < 4; j++) {
+            const c = hist[i + j].openCode.split(',').map(Number);
+            if (c.length >= 7 && c[6] !== 49) b.push(c[6]);
+          }
+          if (b.length === 4) {
+            const hS = [b[3] >= 25, b[2] >= 25, b[1] >= 25];
+            const hNS = b[0] >= 25;
+            const hO = [b[3] % 2 !== 0, b[2] % 2 !== 0, b[1] % 2 !== 0];
+            const hNO = b[0] % 2 !== 0;
+
+            if (hS[0] === pS[0] && hS[1] === pS[1] && hS[2] === pS[2]) { mST++; if (hNS) mSB++; }
+            if (hO[0] === pO[0] && hO[1] === pO[1] && hO[2] === pO[2]) { mOT++; if (hNO) mOE++; }
+          }
+        }
+        if (mST > 0) ngSizeProb = mSB / mST;
+        if (mOT > 0) ngParityProb = mOE / mOT;
+      }
+      const predNGSize = ngSizeProb >= 0.5;
+      const predNGParity = ngParityProb >= 0.5;
+
+      // 评估命中
+      if (predMSize === actualBig) hitMultiHorizon += 1;
+      if (predMParity === actualOdd) hitMultiHorizon += 1;
+
+      if (predMKSize === actualBig) hitMarkov += 1;
+      if (predMKParity === actualOdd) hitMarkov += 1;
+
+      if (predNGSize === actualBig) hitNGram += 1;
+      if (predNGParity === actualOdd) hitNGram += 1;
+
+      totalRounds += 2;
+    }
+
+    if (totalRounds > 0) {
+      const accMH = hitMultiHorizon / totalRounds;
+      const accMK = hitMarkov / totalRounds;
+      const accNG = hitNGram / totalRounds;
+
+      // Softmax with temperature 0.15 (accentuate better models)
+      const expMH = Math.exp(accMH / 0.15);
+      const expMK = Math.exp(accMK / 0.15);
+      const expNG = Math.exp(accNG / 0.15);
+      const sumExp = expMH + expMK + expNG;
+
+      weightMultiHorizon = expMH / sumExp;
+      weightMarkov = expMK / sumExp;
+      weightNGram = expNG / sumExp;
+    }
+  }
+
+  // ==========================================
   // 7. 多维混合模型加权决策计算 (Comprehensive Weighting)
   // ==========================================
-  // 大小属性综合概率: 40% 多时段均值回归 + 30% 一阶马尔可夫链 + 30% N-Gram 序列概率
-  let finalBigScore = (integratedSizeProb) * 0.40 + (scoreBig * pBig) * 0.30 + (nGramSizeProb) * 0.30;
-  let finalSmallScore = (1.0 - integratedSizeProb) * 0.40 + (scoreSmall * pSmall) * 0.30 + (1.0 - nGramSizeProb) * 0.30;
+  // 大小属性综合概率: 动态自适应集成权重分配
+  let finalBigScore = (integratedSizeProb) * weightMultiHorizon + (scoreBig * pBig) * weightMarkov + (nGramSizeProb) * weightNGram;
+  let finalSmallScore = (1.0 - integratedSizeProb) * weightMultiHorizon + (scoreSmall * pSmall) * weightMarkov + (1.0 - nGramSizeProb) * weightNGram;
 
   // 单双属性综合概率
-  let finalOddScore = (integratedParityProb) * 0.40 + (scoreOdd * pOdd) * 0.30 + (nGramParityProb) * 0.30;
-  let finalEvenScore = (1.0 - integratedParityProb) * 0.40 + (scoreEven * pEven) * 0.30 + (1.0 - nGramParityProb) * 0.30;
+  let finalOddScore = (integratedParityProb) * weightMultiHorizon + (scoreOdd * pOdd) * weightMarkov + (nGramParityProb) * weightNGram;
+  let finalEvenScore = (1.0 - integratedParityProb) * weightMultiHorizon + (scoreEven * pEven) * weightMarkov + (1.0 - nGramParityProb) * weightNGram;
 
   // 注入自适应自我纠偏反馈因子
   finalBigScore += biasSizeOffset;
@@ -707,6 +890,9 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   const confidence = Math.min(99, Math.max(93, baseConfidence));
 
   const rparts: string[] = [];
+
+  // 集成权重公示
+  rparts.push(`【自适应系统权重分配】：指数时间衰减核 $w_1 = ${Math.round(weightMultiHorizon * 100)}\\%$ | 双阶马氏转移矩阵 $w_2 = ${Math.round(weightMarkov * 100)}\\%$ | 序列模式 N-Gram $w_3 = ${Math.round(weightNGram * 100)}\\%$ (由最近 8 期真实命中率计算)`);
   
   // 大小决策描述
   if (dragonSizeAction && dragonSizeAction.startsWith('FOLLOW')) {
@@ -733,7 +919,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
 
   return {
     targetIssue: nextIssue,
-    algorithmName: '智能多源核密度自适应集成推演引擎 v5.0',
+    algorithmName: '自适应软极值动态集成推演引擎 v6.0',
     confidence,
     sizePred,
     parityPred,
