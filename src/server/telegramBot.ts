@@ -257,9 +257,9 @@ ${lines.join('\n\n')}
 ${titleText}
 --------------------------------------
 ${statusText}
-<b>累计总下注</b>: <code>${pnl.totalBet.toLocaleString()} USDT</code> (3 USDT/期)
-<b>累计总派彩</b>: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
-<b>累计净盈亏</b>: <b>+${pnl.netProfit.toLocaleString()} USDT 📈</b>
+<b>今天最高亏损</b>: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toLocaleString()}` : '0'} USDT</code>
+<b>今天最高盈利</b>: <code>+${pnl.maxProfit.toLocaleString()} USDT</code>
+<b>累计净盈亏</b>: <b>${pnl.netProfit >= 0 ? '+' : ''}${pnl.netProfit.toLocaleString()} USDT 📈</b>
 <b>投资回报率</b>: <b>+${pnl.roi}% 🔥 (ROI)</b>
 --------------------------------------
 📏 <b>大小命中率</b>: <code>${pnl.sizeHitRate}%</code> (赔率 1.95)

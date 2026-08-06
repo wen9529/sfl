@@ -39,6 +39,8 @@ export interface ProfitAndLossReport {
   isCompleted: boolean;
   totalBet: number;
   totalPayout: number;
+  maxLoss: number;
+  maxProfit: number;
   netProfit: number;
   roi: number;
   sizeHitRate: number;
@@ -943,6 +945,8 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
       isCompleted: false,
       totalBet: 0,
       totalPayout: 0,
+      maxLoss: 0,
+      maxProfit: 0,
       netProfit: 0,
       roi: 0,
       sizeHitRate: 0,
@@ -976,6 +980,9 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
 
   let totalBet = 0;
   let totalPayout = 0;
+  let runningNetProfit = 0;
+  let maxProfit = 0;
+  let minNetProfit = 0;
   let sizeHits = 0;
   let parityHits = 0;
   let colorHits = 0;
@@ -1029,6 +1036,11 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
     totalBet += bet;
     totalPayout += payout;
 
+    const netRound = payout - bet;
+    runningNetProfit += netRound;
+    if (runningNetProfit > maxProfit) maxProfit = runningNetProfit;
+    if (runningNetProfit < minNetProfit) minNetProfit = runningNetProfit;
+
     if (sizeHit) sizeHits++;
     if (parityHit) parityHits++;
     if (colorHit) colorHits++;
@@ -1036,8 +1048,7 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
       allThreeHits++;
     }
 
-    const net = payout - bet;
-    if (net > 0) {
+    if (netRound > 0) {
       currentStreak++;
       if (currentStreak > maxStreak) maxStreak = currentStreak;
     } else {
@@ -1048,6 +1059,8 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
   const netProfit = Number((totalPayout - totalBet).toFixed(2));
   const roi = totalBet > 0 ? Number(((netProfit / totalBet) * 100).toFixed(2)) : 0;
   const isCompleted = dayDrawNum >= 480 && predictedRounds >= 430;
+  const maxLoss = Number(Math.abs(Math.min(0, minNetProfit)).toFixed(2));
+  const maxProfitFinal = Number(Math.max(0, maxProfit).toFixed(2));
 
   return {
     dayDrawNum,
@@ -1056,6 +1069,8 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
     isCompleted,
     totalBet,
     totalPayout: Number(totalPayout.toFixed(2)),
+    maxLoss,
+    maxProfit: maxProfitFinal,
     netProfit,
     roi,
     sizeHitRate: predictedRounds > 0 ? Number(((sizeHits / predictedRounds) * 100).toFixed(1)) : 0,
@@ -1145,8 +1160,8 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 • 命中明细: 大小${sizeHit ? '✅' : '❌'} | 单双${parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}
 --------------------------------------
 <b>📈 今日累计总盈亏 (${pnl.predictedRounds} 期)</b>:
-• 累计总投注: <code>${pnl.totalBet.toLocaleString()} USDT</code>
-• 累计总派彩: <code>${pnl.totalPayout.toLocaleString()} USDT</code>
+• 今天最高亏损: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toLocaleString()}` : '0'} USDT</code>
+• 今天最高盈利: <code>+${pnl.maxProfit.toLocaleString()} USDT</code>
 • 累计净盈亏: <b>${netProfitSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: ${roiSign}%)
 --------------------------------------
 <b>🧠 下一期智能预测 (第 ${prediction.targetIssue} 期)</b>:

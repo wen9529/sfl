@@ -651,6 +651,9 @@ if (!function_exists('calculateProfitAndLossPHP')) {
 
         $totalBet = 0;
         $totalPayout = 0;
+        $runningNetProfit = 0;
+        $maxProfit = 0;
+        $minNetProfit = 0;
         $sizeHits = 0;
         $parityHits = 0;
         $colorHits = 0;
@@ -674,6 +677,11 @@ if (!function_exists('calculateProfitAndLossPHP')) {
             $payout = isset($record['payout']) ? $record['payout'] : 0;
             $totalPayout += $payout;
 
+            $net = $payout - $bet;
+            $runningNetProfit += $net;
+            if ($runningNetProfit > $maxProfit) $maxProfit = $runningNetProfit;
+            if ($runningNetProfit < $minNetProfit) $minNetProfit = $runningNetProfit;
+
             if (!empty($record['sizeHit'])) $sizeHits++;
             if (!empty($record['parityHit'])) $parityHits++;
             if (!empty($record['colorHit'])) $colorHits++;
@@ -682,7 +690,6 @@ if (!function_exists('calculateProfitAndLossPHP')) {
                 $allThreeHits++;
             }
 
-            $net = $payout - $bet;
             if ($net > 0) {
                 $currentStreak++;
                 if ($currentStreak > $maxStreak) $maxStreak = $currentStreak;
@@ -694,6 +701,8 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         $netProfit = round($totalPayout - $totalBet, 2);
         $roi = $totalBet > 0 ? round(($netProfit / $totalBet) * 100, 2) : 0;
         $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 430);
+        $maxLoss = round(abs(min(0, $minNetProfit)), 2);
+        $maxProfitFinal = round(max(0, $maxProfit), 2);
 
         return [
             "dayDrawNum" => $dayDrawNum,
@@ -702,6 +711,8 @@ if (!function_exists('calculateProfitAndLossPHP')) {
             "isCompleted" => $isCompleted,
             "totalBet" => $totalBet,
             "totalPayout" => round($totalPayout, 2),
+            "maxLoss" => $maxLoss,
+            "maxProfit" => $maxProfitFinal,
             "netProfit" => $netProfit,
             "roi" => $roi,
             "sizeHitRate" => $predictedRounds > 0 ? round(($sizeHits / $predictedRounds) * 100, 1) : 0,
@@ -795,8 +806,8 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "• 命中明细: 大小" . ($sizeHit ? "✅" : "❌") . " | 单双" . ($parityHit ? "✅" : "❌") . " | 波色" . ($colorHit ? "✅" : "❌") . "\n"
              . "--------------------------------------\n"
              . "<b>📈 今日累计总盈亏 ({$pnl['predictedRounds']} 期)</b>:\n"
-             . "• 累计总投注: <code>" . number_format($pnl['totalBet']) . " USDT</code>\n"
-             . "• 累计总派彩: <code>" . number_format($pnl['totalPayout'], 2) . " USDT</code>\n"
+             . "• 今天最高亏损: <code>" . ($pnl['maxLoss'] > 0 ? "-" . number_format($pnl['maxLoss'], 2) : "0") . " USDT</code>\n"
+             . "• 今天最高盈利: <code>+" . number_format($pnl['maxProfit'], 2) . " USDT</code>\n"
              . "• 累计净盈亏: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT " . ($pnl['netProfit'] >= 0 ? "🚀" : "💧") . "</b> (ROI: {$roiSign}{$pnl['roi']}%)\n"
              . "--------------------------------------\n"
              . "<b>🧠 下一期智能预测 (第 {$prediction['targetIssue']} 期)</b>:\n"
