@@ -133,6 +133,9 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
                 'targetIssue' => getMacau3MinIssueInfoPHP(-1)['expect'] ?? '最新期',
                 'algorithmName' => '自适应级联统计集成模型 v4.0',
                 'confidence' => 90,
+                'sizeConfidence' => 90,
+                'parityConfidence' => 90,
+                'colorConfidence' => 90,
                 'sizePred' => '大',
                 'sizeReason' => '暂无数据开奖期望',
                 'parityPred' => '单',
@@ -555,6 +558,9 @@ if (!function_exists('syncPredictionsDatabasePHP')) {
                     'colorPred' => $pred['colorPred'],
                     'colorOdds' => $pred['colorOdds'] ?? 2.75,
                     'confidence' => $pred['confidence'] ?? 88,
+                    'sizeConfidence' => $pred['sizeConfidence'] ?? $pred['confidence'] ?? 90,
+                    'parityConfidence' => $pred['parityConfidence'] ?? $pred['confidence'] ?? 90,
+                    'colorConfidence' => $pred['colorConfidence'] ?? $pred['confidence'] ?? 90,
                     'sizeHit' => null,
                     'parityHit' => null,
                     'colorHit' => null,
@@ -615,6 +621,9 @@ if (!function_exists('syncPredictionsDatabasePHP')) {
                 'colorPred' => $pred['colorPred'],
                 'colorOdds' => $pred['colorOdds'] ?? 2.75,
                 'confidence' => $pred['confidence'] ?? 88,
+                'sizeConfidence' => $pred['sizeConfidence'] ?? $pred['confidence'] ?? 90,
+                'parityConfidence' => $pred['parityConfidence'] ?? $pred['confidence'] ?? 90,
+                'colorConfidence' => $pred['colorConfidence'] ?? $pred['confidence'] ?? 90,
                 'sizeHit' => null,
                 'parityHit' => null,
                 'colorHit' => null,
@@ -804,6 +813,10 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
         $netProfitSign = $pnl['netProfit'] >= 0 ? "+" : "";
         $roiSign = $pnl['roi'] >= 0 ? "+" : "";
 
+        $sizeConf = $prediction['sizeConfidence'] ?? $prediction['confidence'] ?? 90;
+        $parityConf = $prediction['parityConfidence'] ?? $prediction['confidence'] ?? 90;
+        $colorConf = $prediction['colorConfidence'] ?? $prediction['confidence'] ?? 90;
+
         return "<b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>\n"
              . "--------------------------------------\n"
              . "<b>最新开奖期号</b>: <code>{$latest['expect']}</code>\n"
@@ -821,9 +834,9 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "• 累计净盈亏: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT " . ($pnl['netProfit'] >= 0 ? "🚀" : "💧") . "</b> (ROI: {$roiSign}{$pnl['roi']}%)\n"
              . "--------------------------------------\n"
              . "<b>🧠 下一期智能预测 (第 {$prediction['targetIssue']} 期)</b>:\n"
-             . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95 | 置信度 <code>{$prediction['sizeConfidence']}%</code>)\n"
-             . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95 | 置信度 <code>{$prediction['parityConfidence']}%</code>)\n"
-             . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$prediction['colorConfidence']}%</code>)\n"
+             . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95 | 置信度 <code>{$sizeConf}%</code>)\n"
+             . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95 | 置信度 <code>{$parityConf}%</code>)\n"
+             . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$colorConf}%</code>)\n"
              . "--------------------------------------\n"
              . "📢 <b>官方频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "") . "\n"
              . "<i>💡 每分钟自动拉取开奖并实时演算推演</i>";

@@ -1161,6 +1161,10 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   const netProfitSign = pnl.netProfit >= 0 ? `+${pnl.netProfit}` : `${pnl.netProfit}`;
   const roiSign = pnl.roi >= 0 ? `+${pnl.roi}` : `${pnl.roi}`;
 
+  const sizeConf = prediction.sizeConfidence ?? prediction.confidence ?? 90;
+  const parityConf = prediction.parityConfidence ?? prediction.confidence ?? 90;
+  const colorConf = prediction.colorConfidence ?? prediction.confidence ?? 90;
+
   return `
 <b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>
 --------------------------------------
@@ -1179,9 +1183,9 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 • 累计净盈亏: <b>${netProfitSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: ${roiSign}%)
 --------------------------------------
 <b>🧠 下一期智能预测 (第 ${prediction.targetIssue} 期)</b>:
-📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95 | 置信度 <code>${prediction.sizeConfidence}%</code>)
-🎲 <b>单双预测</b>: <b>【 ${prediction.parityPred} 】</b> (赔率 1.95 | 置信度 <code>${prediction.parityConfidence}%</code>)
-🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds} | 置信度 <code>${prediction.colorConfidence}%</code>)
+📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95 | 置信度 <code>${sizeConf}%</code>)
+🎲 <b>单双预测</b>: <b>【 ${prediction.parityPred} 】</b> (赔率 1.95 | 置信度 <code>${parityConf}%</code>)
+🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds} | 置信度 <code>${colorConf}%</code>)
 --------------------------------------
 <b>📢 官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
 <i>💡 每分钟自动拉取开奖并实时演算推演</i>

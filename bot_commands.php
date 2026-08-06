@@ -301,14 +301,18 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $draws = getLatestDrawsPHP();
             $prediction = generatePredictFrom50DrawsPHP($draws);
 
+            $sizeConf = $prediction['sizeConfidence'] ?? $prediction['confidence'] ?? 90;
+            $parityConf = $prediction['parityConfidence'] ?? $prediction['confidence'] ?? 90;
+            $colorConf = $prediction['colorConfidence'] ?? $prediction['confidence'] ?? 90;
+
             $msgText = "<b>🧠 澳门三分六合彩 · 50期规律智能预测</b>\n"
                      . "--------------------------------------\n"
                      . "<b>目标期号</b>: <code>{$prediction['targetIssue']}</code>\n"
                      . "<b>精算模型</b>: {$prediction['algorithmName']}\n"
                      . "--------------------------------------\n"
-                     . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95 | 置信度 <code>{$prediction['sizeConfidence']}%</code>)\n"
-                     . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95 | 置信度 <code>{$prediction['parityConfidence']}%</code>)\n"
-                     . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$prediction['colorConfidence']}%</code>)\n"
+                     . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95 | 置信度 <code>{$sizeConf}%</code>)\n"
+                     . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95 | 置信度 <code>{$parityConf}%</code>)\n"
+                     . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$colorConf}%</code>)\n"
                      . "--------------------------------------\n"
                      . "💡 <b>规律依据</b>:\n"
                      . "<i>{$prediction['rationale']}</i>\n"
