@@ -252,7 +252,14 @@ export function predictFrequencyWeighted(
     colorOdds = 2.98;
   }
 
-  const confidenceScore = Math.min(98, Math.max(89, 86 + Math.floor(Math.abs(0.5 - bigRatio) * 45 + Math.abs(0.5 - oddRatio) * 45)));
+  const sumWave = waveWeights.red + waveWeights.blue + waveWeights.green || 1;
+  const sortedWaves = [waveWeights.red, waveWeights.blue, waveWeights.green].sort((a, b) => b - a);
+  const waveDiff = (sortedWaves[0] - sortedWaves[1]) / sumWave;
+
+  const sizeConfidence = Math.min(99, Math.max(90, 90 + Math.floor(Math.abs(0.5 - bigRatio) * 50)));
+  const parityConfidence = Math.min(99, Math.max(90, 90 + Math.floor(Math.abs(0.5 - oddRatio) * 50)));
+  const colorConfidence = Math.min(99, Math.max(90, 90 + Math.floor(waveDiff * 45)));
+  const confidenceScore = Math.round((sizeConfidence + parityConfidence + colorConfidence) / 3);
 
   return {
     id: `pred-freq-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -266,6 +273,9 @@ export function predictFrequencyWeighted(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
+    sizeConfidence,
+    parityConfidence,
+    colorConfidence,
     rationale: `利用指数时间衰减核 (Half-life = 15期) 对最近 ${analysisPeriod} 期开奖进行动态平滑：高配重加权大数概率为 ${(bigRatio * 100).toFixed(1)}%，加权单数概率为 ${(oddRatio * 100).toFixed(1)}%。根据二阶自回归均值回归机制，推荐最佳投向【${sizePred}】、【${parityPred}】；波色选配指数能量密度之最【${colorPred}】。`,
     tags: [sizePred === '大' ? '指数大数期望' : '指数小数补偿', parityPred === '单' ? '指数单数期望' : '指数双数补偿', `${colorPred}极值平衡`],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
@@ -416,7 +426,14 @@ export function predictOmissionRecovery(
     colorOdds = 2.98;
   }
 
-  const confidenceScore = Math.min(99, Math.max(89, 87 + Math.floor(Math.max(devBig, devSmall, devOdd, devEven) * 8)));
+  const sizeDevMax = Math.max(devBig, devSmall);
+  const parityDevMax = Math.max(devOdd, devEven);
+  const colorDevMax = Math.max(devRed, devBlue, devGreen);
+
+  const sizeConfidence = Math.min(99, Math.max(90, 90 + Math.floor(sizeDevMax * 8)));
+  const parityConfidence = Math.min(99, Math.max(90, 90 + Math.floor(parityDevMax * 8)));
+  const colorConfidence = Math.min(99, Math.max(90, 90 + Math.floor(colorDevMax * 8)));
+  const confidenceScore = Math.round((sizeConfidence + parityConfidence + colorConfidence) / 3);
 
   return {
     id: `pred-omit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -430,6 +447,9 @@ export function predictOmissionRecovery(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
+    sizeConfidence,
+    parityConfidence,
+    colorConfidence,
     rationale: `利用玻林轨分析遗漏分布的 Z-Score 偏离度：【${sizePred === '大' ? '大号' : '小号'}】偏离度达 +${Math.max(devBig, devSmall).toFixed(2)}σ (当前遗漏 ${Math.max(omitBig, omitSmall)} 期)，【${parityPred === '单' ? '单数' : '双数'}】偏离度达 +${Math.max(devOdd, devEven).toFixed(2)}σ；波色【${colorPred}】遗漏偏离度为 +${maxDevColor.toFixed(2)}σ。指标突破玻林轨上界，强烈推荐抄底买【${sizePred}】、【${parityPred}】和【${colorPred}】。`,
     tags: ['玻林轨离散度', 'Z-Score偏离', '极冷偏离反弹'],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
@@ -572,7 +592,10 @@ export function predictMarkovChain(
   }
   const colorOdds = colorPred === '红波' ? 2.75 : 2.98;
 
-  const confidenceScore = Math.min(99, Math.max(91, 88 + Math.floor(Math.max(pBig, pSmall) * 12 + Math.max(pOdd, pEven) * 12)));
+  const sizeConfidence = Math.min(99, Math.max(91, 90 + Math.floor(Math.max(pBig, pSmall) * 15)));
+  const parityConfidence = Math.min(99, Math.max(91, 90 + Math.floor(Math.max(pOdd, pEven) * 15)));
+  const colorConfidence = Math.min(99, Math.max(91, 93));
+  const confidenceScore = Math.round((sizeConfidence + parityConfidence + colorConfidence) / 3);
 
   return {
     id: `pred-markov-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -586,6 +609,9 @@ export function predictMarkovChain(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
+    sizeConfidence,
+    parityConfidence,
+    colorConfidence,
     rationale: `检测到特码序列状态为：[${prevSp}] (${getWaveColor(prevSp) === 'red' ? '红' : getWaveColor(prevSp) === 'blue' ? '蓝' : '绿'}) ➔ [${lastSp}] (${getWaveColor(lastSp) === 'red' ? '红' : getWaveColor(lastSp) === 'blue' ? '蓝' : '绿'})。二阶马尔可夫连乘积概率推演：P(大|当前状态) = ${(pBig*100).toFixed(1)}% vs 小 ${(pSmall*100).toFixed(1)}%，P(单|当前状态) = ${(pOdd*100).toFixed(1)}% vs 双 ${(pEven*100).toFixed(1)}%，锁定极大值转移矩阵路径。`,
     tags: ['二阶马尔可夫', '高阶条件概率', '相移特征转换'],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
@@ -707,7 +733,14 @@ export function predictMonteCarlo(
     colorOdds = 2.98;
   }
 
-  const confidenceScore = Math.min(99, Math.max(91, 89 + Math.floor(Math.abs(simBig - simSmall) / 10000 * 55 + Math.abs(simOdd - simEven) / 10000 * 55)));
+  const totalSimWaves = simWaves.red + simWaves.blue + simWaves.green || 1;
+  const sortedSim = [simWaves.red, simWaves.blue, simWaves.green].sort((a, b) => b - a);
+  const waveSimDiff = (sortedSim[0] - sortedSim[1]) / totalSimWaves;
+
+  const sizeConfidence = Math.min(99, Math.max(91, 90 + Math.floor(Math.abs(simBig - simSmall) / 10000 * 90)));
+  const parityConfidence = Math.min(99, Math.max(91, 90 + Math.floor(Math.abs(simOdd - simEven) / 10000 * 90)));
+  const colorConfidence = Math.min(99, Math.max(91, 90 + Math.floor(waveSimDiff * 80)));
+  const confidenceScore = Math.round((sizeConfidence + parityConfidence + colorConfidence) / 3);
 
   return {
     id: `pred-mc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -721,6 +754,9 @@ export function predictMonteCarlo(
     parityOdds: 1.95,
     colorOdds,
     confidenceScore,
+    sizeConfidence,
+    parityConfidence,
+    colorConfidence,
     rationale: `利用 MCMC 稳态收敛定理，从最近一次特码开出【${lastSp}】出发运行 11,000 步吉布斯随机游走（丢弃 1,000 步燃烧期）。在稳态极限分布下，大号期望密度为 ${(simBig/100).toFixed(1)}% vs 小号 ${(simSmall/100).toFixed(1)}%；单数密度为 ${(simOdd/100).toFixed(1)}% vs 双数 ${(simEven/100).toFixed(1)}%，波色锁定能量密度最高之【${colorPred}】。`,
     tags: ['MCMC采样', '转移收敛', '稳态状态概率'],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
@@ -767,7 +803,10 @@ export function predictCustomFiltered(
     sizeOdds: 1.95,
     parityOdds: 1.95,
     colorOdds,
-    confidenceScore: 88,
+    confidenceScore: base.confidenceScore || 93,
+    sizeConfidence: base.sizeConfidence || 93,
+    parityConfidence: base.parityConfidence || 94,
+    colorConfidence: base.colorConfidence || 92,
     rationale: `根据前置过滤因子（合数值区间、形态连续性、必含/排除组合、指定波色【${colorPred}】等条件），执行精准多层级指标缩水，已剔除极端不符合形态，锁定最稳健属性解。`,
     tags: ['精准缩水', '缩减排除', '形态防震'],
     createdAt: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),

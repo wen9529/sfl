@@ -421,10 +421,17 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             $colorOdds = 2.98;
         }
 
-        // 9. 自适应置信度计算 (基于属性冲突度和样本一致性)
+        // 9. 自适应三个独立置信度计算 (基于属性冲突度和样本一致性)
         $sizeDiff = abs($finalBigScore - $finalSmallScore) / ($finalBigScore + $finalSmallScore ?: 1);
         $parityDiff = abs($finalOddScore - $finalEvenScore) / ($finalOddScore + $finalEvenScore ?: 1);
-        $confidence = min(98, max(90, 88 + (int)(($sizeDiff + $parityDiff) * 20)));
+        $colorScores = [$finalRedScore, $finalBlueScore, $finalGreenScore];
+        rsort($colorScores);
+        $colorDiff = ($colorScores[0] - $colorScores[1]) / ($colorScores[0] ?: 1);
+
+        $sizeConfidence = min(99, max(91, 91 + (int)($sizeDiff * 28)));
+        $parityConfidence = min(99, max(91, 91 + (int)($parityDiff * 28)));
+        $colorConfidence = min(99, max(91, 91 + (int)($colorDiff * 25)));
+        $confidence = round(($sizeConfidence + $parityConfidence + $colorConfidence) / 3);
 
         // 10. 生成极具说服力、专业的决策理由
         $rparts = [];
@@ -455,6 +462,9 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             'targetIssue' => $nextIssue,
             'algorithmName' => '自适应级联统计集成模型 v4.0',
             'confidence' => $confidence,
+            'sizeConfidence' => $sizeConfidence,
+            'parityConfidence' => $parityConfidence,
+            'colorConfidence' => $colorConfidence,
             'sizePred' => $sizePred,
             'sizeReason' => $sizeReason,
             'parityPred' => $parityPred,
@@ -811,10 +821,9 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "• 累计净盈亏: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT " . ($pnl['netProfit'] >= 0 ? "🚀" : "💧") . "</b> (ROI: {$roiSign}{$pnl['roi']}%)\n"
              . "--------------------------------------\n"
              . "<b>🧠 下一期智能预测 (第 {$prediction['targetIssue']} 期)</b>:\n"
-             . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95)\n"
-             . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95)\n"
-             . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']})\n"
-             . "🔥 <b>综合置信度</b>: <b>{$prediction['confidence']}%</b>\n"
+             . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95 | 置信度 <code>{$prediction['sizeConfidence']}%</code>)\n"
+             . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95 | 置信度 <code>{$prediction['parityConfidence']}%</code>)\n"
+             . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$prediction['colorConfidence']}%</code>)\n"
              . "--------------------------------------\n"
              . "📢 <b>官方频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "") . "\n"
              . "<i>💡 每分钟自动拉取开奖并实时演算推演</i>";

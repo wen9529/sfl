@@ -217,11 +217,10 @@ ${lines.join('\n\n')}
 --------------------------------------
 <b>目标期号</b>: <code>${pred.targetIssue}</code>
 <b>精算模型</b>: ${pred.algorithmName}
-<b>预测置信度</b>: <b>${pred.confidence}% 🔥</b>
 --------------------------------------
-📏 <b>大小预测</b>: <b>【 ${pred.sizePred} 】</b> (赔率 1.95)
-🎲 <b>单双预测</b>: <b>【 ${pred.parityPred} 】</b> (赔率 1.95)
-🎨 <b>波色预测</b>: <b>【 ${pred.colorPred} 】</b> (赔率 ${pred.colorOdds})
+📏 <b>大小预测</b>: <b>【 ${pred.sizePred} 】</b> (赔率 1.95 | 置信度 <code>${pred.sizeConfidence}%</code>)
+🎲 <b>单双预测</b>: <b>【 ${pred.parityPred} 】</b> (赔率 1.95 | 置信度 <code>${pred.parityConfidence}%</code>)
+🎨 <b>波色预测</b>: <b>【 ${pred.colorPred} 】</b> (赔率 ${pred.colorOdds} | 置信度 <code>${pred.colorConfidence}%</code>)
 --------------------------------------
 💡 <b>规律依据</b>:
 <i>${pred.rationale}</i>

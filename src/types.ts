@@ -67,6 +67,9 @@ export interface PredictionResult {
   parityOdds: number;
   colorOdds: number;
   confidenceScore: number; // 0 - 100
+  sizeConfidence?: number;
+  parityConfidence?: number;
+  colorConfidence?: number;
   rationale: string;
   tags: string[];
   createdAt: string;

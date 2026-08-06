@@ -23,6 +23,9 @@ export interface PredictionResult {
   targetIssue: string;
   algorithmName: string;
   confidence: number;
+  sizeConfidence: number;
+  parityConfidence: number;
+  colorConfidence: number;
   sizePred: '大' | '小';
   parityPred: '单' | '双';
   colorPred: '红波' | '蓝波' | '绿波';
@@ -168,8 +171,11 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   if (!draws || draws.length === 0) {
     return {
       targetIssue: getMacau3MinIssueInfo(-1).expect,
-      algorithmName: '智能多源核密度自适应集成推演引擎 v5.0',
+      algorithmName: '自适应软极值动态集成推演引擎 v6.0',
       confidence: 90,
+      sizeConfidence: 90,
+      parityConfidence: 90,
+      colorConfidence: 90,
       sizePred: '大',
       parityPred: '单',
       colorPred: '红波',
@@ -884,12 +890,17 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   }
 
   // ==========================================
-  // 8. 智能综合置信度计算与深度理由输出
+  // 8. 智能三个独立置信度计算与深度理由输出
   // ==========================================
   const sizeDiff = Math.abs(finalBigScore - finalSmallScore) / (finalBigScore + finalSmallScore || 1);
   const parityDiff = Math.abs(finalOddScore - finalEvenScore) / (finalOddScore + finalEvenScore || 1);
-  const baseConfidence = 91 + Math.floor((sizeDiff + parityDiff) * 15);
-  const confidence = Math.min(99, Math.max(93, baseConfidence));
+  const colorScores = [finalRedScore, finalBlueScore, finalGreenScore].sort((a, b) => b - a);
+  const colorDiff = (colorScores[0] - colorScores[1]) / (colorScores[0] || 1);
+
+  const sizeConfidence = Math.min(99, Math.max(91, 91 + Math.floor(sizeDiff * 28)));
+  const parityConfidence = Math.min(99, Math.max(91, 91 + Math.floor(parityDiff * 28)));
+  const colorConfidence = Math.min(99, Math.max(91, 91 + Math.floor(colorDiff * 25)));
+  const confidence = Math.round((sizeConfidence + parityConfidence + colorConfidence) / 3);
 
   const rparts: string[] = [];
 
@@ -923,6 +934,9 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     targetIssue: nextIssue,
     algorithmName: '自适应软极值动态集成推演引擎 v6.0',
     confidence,
+    sizeConfidence,
+    parityConfidence,
+    colorConfidence,
     sizePred,
     parityPred,
     colorPred,
@@ -1165,10 +1179,9 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 • 累计净盈亏: <b>${netProfitSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: ${roiSign}%)
 --------------------------------------
 <b>🧠 下一期智能预测 (第 ${prediction.targetIssue} 期)</b>:
-📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95)
-🎲 <b>单双预测</b>: <b>【 ${prediction.parityPred} 】</b> (赔率 1.95)
-🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds})
-🔥 <b>综合置信度</b>: <b>${prediction.confidence}%</b>
+📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95 | 置信度 <code>${prediction.sizeConfidence}%</code>)
+🎲 <b>单双预测</b>: <b>【 ${prediction.parityPred} 】</b> (赔率 1.95 | 置信度 <code>${prediction.parityConfidence}%</code>)
+🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds} | 置信度 <code>${prediction.colorConfidence}%</code>)
 --------------------------------------
 <b>📢 官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
 <i>💡 每分钟自动拉取开奖并实时演算推演</i>

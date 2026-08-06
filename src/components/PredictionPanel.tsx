@@ -227,9 +227,15 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                       </h3>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20">
-                        置信度 {pred.confidenceScore}%
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-bold border border-amber-500/20">
+                        大小置信度 {pred.sizeConfidence || pred.confidenceScore}%
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 font-bold border border-rose-500/20">
+                        单双置信度 {pred.parityConfidence || pred.confidenceScore}%
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20">
+                        波色置信度 {pred.colorConfidence || pred.confidenceScore}%
                       </span>
                     </div>
                   </div>
@@ -239,13 +245,19 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                     <div className="flex flex-col items-center justify-center bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
                       <span className="text-[10px] text-slate-400 mb-0.5">大小预测</span>
                       <span className="text-xl font-black text-amber-400">【 {pred.sizePred} 】</span>
-                      <span className="text-[10px] text-emerald-400 mt-0.5 font-mono">赔率 {pred.sizeOdds}</span>
+                      <div className="flex flex-col text-[10px] text-slate-400 mt-1 font-mono gap-0.5">
+                        <span className="text-emerald-400">赔率 {pred.sizeOdds}</span>
+                        <span className="text-amber-300 font-semibold">置信度 {pred.sizeConfidence || pred.confidenceScore}%</span>
+                      </div>
                     </div>
 
                     <div className="flex flex-col items-center justify-center bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
                       <span className="text-[10px] text-slate-400 mb-0.5">单双预测</span>
                       <span className="text-xl font-black text-rose-400">【 {pred.parityPred} 】</span>
-                      <span className="text-[10px] text-emerald-400 mt-0.5 font-mono">赔率 {pred.parityOdds}</span>
+                      <div className="flex flex-col text-[10px] text-slate-400 mt-1 font-mono gap-0.5">
+                        <span className="text-emerald-400">赔率 {pred.parityOdds}</span>
+                        <span className="text-rose-300 font-semibold">置信度 {pred.parityConfidence || pred.confidenceScore}%</span>
+                      </div>
                     </div>
 
                     <div className="flex flex-col items-center justify-center bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
@@ -253,7 +265,10 @@ export const PredictionPanel: React.FC<PredictionPanelProps> = ({
                       <span className={`text-xl font-black ${pred.colorPred === '红波' ? 'text-red-400' : pred.colorPred === '蓝波' ? 'text-sky-400' : 'text-emerald-400'}`}>
                         【 {pred.colorPred} 】
                       </span>
-                      <span className="text-[10px] text-emerald-400 mt-0.5 font-mono">赔率 {pred.colorOdds}</span>
+                      <div className="flex flex-col text-[10px] text-slate-400 mt-1 font-mono gap-0.5">
+                        <span className="text-emerald-400">赔率 {pred.colorOdds}</span>
+                        <span className="text-cyan-300 font-semibold">置信度 {pred.colorConfidence || pred.confidenceScore}%</span>
+                      </div>
                     </div>
                   </div>
 
