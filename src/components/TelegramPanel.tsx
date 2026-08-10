@@ -12,7 +12,10 @@ import {
   AlertTriangle,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Link as LinkIcon,
+  Globe,
+  Bot
 } from 'lucide-react';
 
 interface LogItem {
@@ -29,6 +32,14 @@ interface BotConfig {
   chatId: string;
   adminId: string;
   autoPushEnabled: boolean;
+}
+
+interface WebhookInfo {
+  url?: string;
+  has_custom_certificate?: boolean;
+  pending_update_count?: number;
+  last_error_date?: number;
+  last_error_message?: string;
 }
 
 export const TelegramPanel: React.FC = () => {
@@ -50,20 +61,25 @@ export const TelegramPanel: React.FC = () => {
   } | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
+  // Webhook Binding state
+  const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
+  const [isBindingWebhook, setIsBindingWebhook] = useState<boolean>(false);
+  const [customWebhookUrl, setCustomWebhookUrl] = useState<string>('');
+  const [webhookResult, setWebhookResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+
   // Fetch status and logs
   const fetchStatus = async () => {
     setIsLoading(true);
     try {
-      // Prioritize Node API, fallback to PHP API
       let res = await fetch('/api/telegram/status');
       if (!res.ok) {
-        // Fallback to PHP endpoint
         res = await fetch('/api.php?action=logs');
         if (res.ok) {
           const data = await res.json();
-          // Map PHP config structures
           setLogs(data.logs || []);
-          // Config will be displayed as fallback
           setConfig({
             botToken: '已配置 (PHP后端隐藏密钥)',
             chatId: '请检查 php/config.php',
@@ -89,11 +105,71 @@ export const TelegramPanel: React.FC = () => {
     }
   };
 
+  const fetchWebhookInfo = async () => {
+    try {
+      let res = await fetch('/api/telegram/webhook-info');
+      if (!res.ok) {
+        res = await fetch('/api.php?action=webhook_info');
+      }
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.result) {
+          setWebhookInfo(data.result);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch webhook info:', e);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
+    fetchWebhookInfo();
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchWebhookInfo();
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Bind Webhook
+  const handleSetWebhook = async (urlToSet?: string) => {
+    setIsBindingWebhook(true);
+    setWebhookResult(null);
+    try {
+      const targetUrl = urlToSet || customWebhookUrl;
+      let res = await fetch('/api/telegram/set-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: targetUrl }),
+      });
+      if (!res.ok && res.status !== 400) {
+        const query = targetUrl ? `&webhookUrl=${encodeURIComponent(targetUrl)}` : '';
+        res = await fetch(`/telegram_bot.php?action=set_webhook${query}`);
+      }
+      const data = await res.json();
+      if (data.success) {
+        setWebhookResult({
+          success: true,
+          message: data.message || `Webhook 绑定成功！当前绑定地址：${data.webhookUrl || targetUrl || '默认地址'}`,
+        });
+        fetchWebhookInfo();
+        fetchStatus();
+      } else {
+        setWebhookResult({
+          success: false,
+          message: data.error || 'Webhook 绑定失败',
+        });
+      }
+    } catch (err: any) {
+      setWebhookResult({
+        success: false,
+        message: '绑定 Webhook 时发生网络异常：' + err.message,
+      });
+    } finally {
+      setIsBindingWebhook(false);
+    }
+  };
 
   // Trigger manual test push
   const handleTestPush = async () => {
@@ -263,6 +339,91 @@ export const TelegramPanel: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Webhook Configuration & Diagnostics (Fix Bot Non-Responsive issue) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Globe className="w-5 h-5 text-sky-400" />
+            <h2 className="font-bold text-base text-slate-100">
+              Telegram Webhook 指令与按钮绑定
+              <span className="text-xs text-sky-400 font-normal ml-2 font-mono">【解决 Bot 无反应问题】</span>
+            </h2>
+          </div>
+          <button
+            onClick={() => handleSetWebhook()}
+            disabled={isBindingWebhook}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+          >
+            <LinkIcon className={`w-3.5 h-3.5 ${isBindingWebhook ? 'animate-spin' : ''}`} />
+            {isBindingWebhook ? '正在绑定 Webhook...' : '🔗 一键绑定当前应用 Webhook'}
+          </button>
+        </div>
+
+        {/* Explain why channel push works but bot messages don't respond */}
+        <div className="bg-sky-950/30 border border-sky-800/40 p-4 rounded-xl text-xs space-y-2 text-sky-200">
+          <div className="flex items-center gap-2 font-bold text-sky-400">
+            <Bot className="w-4 h-4" />
+            <span>为什么频道能正常推送，但对 Bot 发送指令/点击按钮无反应？</span>
+          </div>
+          <p className="leading-relaxed opacity-90 text-[11px]">
+            • <b>频道发帖</b> 属于【主动推送】（服务器主动请求 Telegram 接口，只要配置 Token 与 Chat ID 即可运行）。
+            <br />
+            • <b>Bot 菜单与指令</b> 属于【被动回调】（用户发送 <code>/draw</code> 或点击按钮时，Telegram 需要向服务器的 <b>Webhook 地址</b> 发送 HTTP POST 回调）。
+            <br />
+            • 若更换了部署环境或尚未绑定 Webhook，Telegram 无法把用户消息发回程序，就会出现 Bot 处于静默“无反应”状态。点击右上角<b>【一键绑定当前应用 Webhook】</b>即可恢复！
+          </p>
+        </div>
+
+        {/* Webhook Details Status Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
+            <span className="text-slate-400 block font-medium">当前 Telegram 记录的 Webhook 地址</span>
+            <code className="text-sky-300 font-mono block break-all text-[11px]">
+              {webhookInfo?.url ? webhookInfo.url : '未绑定 / Telegram 尚未建立 Webhook 回调'}
+            </code>
+          </div>
+
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
+            <span className="text-slate-400 block font-medium">Telegram 待处理消息积压队列 (Pending)</span>
+            <span className={`font-mono text-sm font-bold block ${webhookInfo?.pending_update_count && webhookInfo.pending_update_count > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {webhookInfo?.pending_update_count !== undefined ? `${webhookInfo.pending_update_count} 条` : '查询中...'}
+            </span>
+          </div>
+
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 space-y-1">
+            <span className="text-slate-400 block font-medium">最近一次 Webhook 错误状态</span>
+            <span className={`block font-mono text-[11px] ${webhookInfo?.last_error_message ? 'text-red-400' : 'text-slate-400'}`}>
+              {webhookInfo?.last_error_message ? `${webhookInfo.last_error_message}` : '🟢 无错误 (正常)'}
+            </span>
+          </div>
+        </div>
+
+        {/* Custom Webhook URL input & bind button */}
+        <div className="flex flex-col sm:flex-row gap-2 pt-1">
+          <input
+            type="url"
+            value={customWebhookUrl}
+            onChange={(e) => setCustomWebhookUrl(e.target.value)}
+            placeholder="自定义地址 (留空代表绑定当前应用)，例如: https://wenge9529.serv00.net/telegram_bot.php"
+            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500 font-mono"
+          />
+          <button
+            onClick={() => handleSetWebhook()}
+            disabled={isBindingWebhook}
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 rounded-xl text-xs font-semibold border border-slate-700 whitespace-nowrap transition-all cursor-pointer"
+          >
+            绑定所填 Webhook 地址
+          </button>
+        </div>
+
+        {webhookResult && (
+          <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${webhookResult.success ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300' : 'bg-red-950/30 border-red-500/30 text-red-300'}`}>
+            {webhookResult.success ? <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0" />}
+            <span>{webhookResult.message}</span>
+          </div>
+        )}
+      </div>
 
       {/* Real-time Push Logs */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">

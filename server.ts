@@ -99,7 +99,33 @@ async function startServer() {
   }, 60000); // 1分钟 (60000ms)
 
 
-  // API 5: Telegram Webhook 路由处理
+  // 辅助写入 Telegram 调试日志
+  const writeTelegramLog = (type: string, status: "success" | "error", message: string, detail: string) => {
+    try {
+      const logFile = path.join(process.cwd(), "telegram_logs.json");
+      let logs: any[] = [];
+      if (fs.existsSync(logFile)) {
+        try {
+          logs = JSON.parse(fs.readFileSync(logFile, "utf8")) || [];
+        } catch (e) {}
+      }
+      const logItem = {
+        id: "log_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        time: new Date().toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" }),
+        type,
+        status,
+        message,
+        detail,
+      };
+      logs.unshift(logItem);
+      if (logs.length > 100) logs = logs.slice(0, 100);
+      fs.writeFileSync(logFile, JSON.stringify(logs, null, 2), "utf8");
+    } catch (e) {
+      console.error("写入 telegram_logs.json 失败:", e);
+    }
+  };
+
+  // API 5: Telegram Webhook 路由处理 (接收用户消息与按钮交互)
   app.post("/api/telegram/webhook", async (req, res) => {
     res.status(200).send("OK");
     try {
@@ -109,9 +135,84 @@ async function startServer() {
       const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
       if (!token) return;
 
+      const chatOrUserId = update?.message?.chat?.id || update?.callback_query?.message?.chat?.id || "未知";
+      const userText = update?.message?.text || update?.callback_query?.data || "点击按钮";
+      
+      writeTelegramLog("Webhook收到消息", "success", `收到来自 [${chatOrUserId}] 的指令: ${userText}`, JSON.stringify(update, null, 2));
+
       await processTelegramMessage(token, update, currentDraws);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Webhook error:", e);
+      writeTelegramLog("Webhook处理异常", "error", `处理 Webhook 指令出错: ${e.message}`, e.stack || "");
+    }
+  });
+
+  // API 5.1: Telegram 绑定 Webhook API
+  app.post("/api/telegram/set-webhook", async (req, res) => {
+    try {
+      const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return res.status(400).json({ success: false, error: "未配置 TELEGRAM_BOT_TOKEN" });
+      }
+
+      let webhookUrl = req.body?.webhookUrl;
+      if (!webhookUrl) {
+        const host = req.get("host") || "localhost:3000";
+        const protocol = req.protocol === "https" || req.get("x-forwarded-proto") === "https" ? "https" : "http";
+        webhookUrl = `${protocol}://${host}/api/telegram/webhook`;
+      }
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: webhookUrl }),
+        signal: AbortSignal.timeout(8000),
+      });
+
+      const tgData = await tgRes.json();
+      if (tgData.ok) {
+        writeTelegramLog("绑定Webhook", "success", `成功绑定 Webhook 到: ${webhookUrl}`, JSON.stringify(tgData, null, 2));
+        return res.json({
+          success: true,
+          message: `Webhook 绑定成功！Telegram 已将回调地址设为: ${webhookUrl}`,
+          webhookUrl,
+          telegramResponse: tgData,
+        });
+      } else {
+        writeTelegramLog("绑定Webhook", "error", `绑定 Webhook 失败: ${tgData.description}`, JSON.stringify(tgData, null, 2));
+        return res.json({
+          success: false,
+          error: tgData.description || "Telegram API 绑定报错",
+          webhookUrl,
+          telegramResponse: tgData,
+        });
+      }
+    } catch (err: any) {
+      writeTelegramLog("绑定Webhook异常", "error", "绑定 Webhook 时发生网络或超时异常", err.message);
+      return res.status(500).json({ success: false, error: "网络请求异常: " + err.message });
+    }
+  });
+
+  // API 5.2: Telegram 查询当前 Webhook 绑定状态 API
+  app.get("/api/telegram/webhook-info", async (req, res) => {
+    try {
+      const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return res.status(400).json({ success: false, error: "未配置 TELEGRAM_BOT_TOKEN" });
+      }
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const tgData = await tgRes.json();
+
+      if (tgData.ok) {
+        return res.json({ success: true, result: tgData.result });
+      } else {
+        return res.status(400).json({ success: false, error: tgData.description || "获取 Webhook 状态失败" });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
     }
   });
 

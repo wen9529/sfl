@@ -160,4 +160,48 @@ if ($action === 'test_push') {
     exit;
 }
 
+// 路由 6: 绑定 Webhook API
+if ($action === 'set_webhook') {
+    $token = !empty($_REQUEST['botToken']) ? $_REQUEST['botToken'] : ($config['telegram_bot_token'] ?? '');
+    
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "https";
+    $host = $_SERVER['HTTP_HOST'] ?? 'wenge9529.serv00.net';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/telegram_bot.php';
+    $defaultWebhookUrl = "{$protocol}://{$host}{$script}";
+
+    $webhookUrl = !empty($_REQUEST['webhookUrl']) ? $_REQUEST['webhookUrl'] : $defaultWebhookUrl;
+
+    if (!$token) {
+        echo json_encode(['success' => false, 'error' => '缺少 Bot Token！请检查 config.php 或传入参数'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $res = sendTgRequestPHP($token, 'setWebhook', ['url' => $webhookUrl]);
+    if ($res['ok'] ?? false) {
+        writeLogPHP('Webhook', 'success', "已成功绑定 Webhook: {$webhookUrl}");
+        echo json_encode(['success' => true, 'message' => 'Webhook 绑定成功！', 'webhookUrl' => $webhookUrl, 'result' => $res], JSON_UNESCAPED_UNICODE);
+    } else {
+        $err = $res['description'] ?? '绑定失败';
+        writeLogPHP('Webhook', 'error', "Webhook 绑定失败", $err);
+        echo json_encode(['success' => false, 'error' => $err, 'attemptedWebhookUrl' => $webhookUrl, 'result' => $res], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+// 路由 7: 查询 Webhook 状态 API
+if ($action === 'webhook_info') {
+    $token = $config['telegram_bot_token'] ?? '';
+    if (!$token) {
+        echo json_encode(['success' => false, 'error' => '未配置 TELEGRAM_BOT_TOKEN'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $res = sendTgRequestPHP($token, 'getWebhookInfo', []);
+    echo json_encode([
+        'success' => true,
+        'result' => $res['result'] ?? null,
+        'raw' => $res
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 echo json_encode(['error' => '未知 Action'], JSON_UNESCAPED_UNICODE);

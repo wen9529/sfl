@@ -44,6 +44,11 @@ export async function processTelegramMessage(
     chatId = msg.chat?.id;
     text = (msg.text || '').trim();
 
+    // 清理掉 @bot_username (例如 /draw@macau_bot -> /draw)
+    if (text.startsWith('/')) {
+      text = text.replace(/@\w+/g, '');
+    }
+
     if (text.includes('最新开奖')) text = '/draw';
     else if (text.includes('智能预测')) text = '/predict';
     else if (text.includes('430期盈亏') || text.includes('盈亏')) text = '/stats';
@@ -278,4 +283,28 @@ ${statusText}
     await deliverMessage(msg, inlineButtons);
     return;
   }
+
+  // 默认兜底响应: 无论用户输入任何文本或未知指令，均友好回复交互菜单
+  const defaultHelpMsg = `
+<b>🎰 澳门三分六合彩 · Telegram Bot 极速助手</b>
+--------------------------------------
+收到消息/指令: <code>${text || '快捷交互'}</code>
+请使用下方【键盘菜单】或选择常用功能：
+
+🎰 <b>/draw</b> - 查询最新开奖结果
+📜 <b>/history</b> - 查看 50 期历史开奖
+🧠 <b>/predict</b> - 50 期规律智能预测
+📊 <b>/stats</b> - 430 期盈亏统计报表
+❓ <b>/help</b> - 帮助与使用菜单
+--------------------------------------
+<i>💡 提示: 实时算法推演引擎已就绪，点击快捷按钮即可查看。</i>
+`.trim();
+
+  const defaultButtons = [
+    [{ text: '🎰 最新开奖结果', callback_data: 'cmd_draw' }],
+    [{ text: '🧠 50期智能预测', callback_data: 'cmd_predict' }],
+    [{ text: '📊 盈亏统计报表', callback_data: 'cmd_stats' }],
+  ];
+
+  await deliverMessage(defaultHelpMsg, defaultButtons);
 }

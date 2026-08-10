@@ -51,6 +51,11 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $userMessageId = $msg['message_id'] ?? null;
             $text = trim($msg['text'] ?? '');
 
+            // 清理掉 @bot_username (例如 /draw@macau_bot -> /draw)
+            if (strpos($text, '/') === 0) {
+                $text = preg_replace('/@\w+/', '', $text);
+            }
+
             // 映射键盘菜单点击文本
             if (strpos($text, '最新开奖') !== false) $text = '/draw';
             else if (strpos($text, '智能预测') !== false) $text = '/predict';
@@ -364,6 +369,28 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             writeLogPHP('Webhook指令', 'success', "响应 /stats 给 {$chatId}");
             return;
         }
+
+        // 6. 默认兜底响应: 无论用户输入任何文本或未知指令，均回复帮助菜单卡片
+        $defaultMsg = "<b>🎰 澳门三分六合彩 · Telegram Bot 极速助手</b>\n"
+                    . "--------------------------------------\n"
+                    . "收到消息/指令: <code>{$text}</code>\n"
+                    . "请使用下方【键盘菜单】或选择常用功能：\n\n"
+                    . "🎰 <b>/draw</b> - 查询最新开奖结果\n"
+                    . "📜 <b>/history</b> - 查看 50 期历史开奖\n"
+                    . "🧠 <b>/predict</b> - 50 期规律智能预测\n"
+                    . "📊 <b>/stats</b> - 430 期盈亏统计报表\n"
+                    . "❓ <b>/help</b> - 帮助与使用菜单\n"
+                    . "--------------------------------------\n"
+                    . "<i>💡 提示: 实时算法推演引擎已就绪，点击下侧按钮即可查看。</i>";
+
+        $defaultButtons = [
+            [['text' => '🎰 最新开奖结果', 'callback_data' => 'cmd_draw']],
+            [['text' => '🧠 50期智能预测', 'callback_data' => 'cmd_predict']],
+            [['text' => '📊 盈亏统计报表', 'callback_data' => 'cmd_stats']]
+        ];
+
+        $deliverMessage($defaultMsg, $defaultButtons);
+        writeLogPHP('Webhook指令', 'success', "兜底响应帮助菜单给 {$chatId}");
     }
 }
 
