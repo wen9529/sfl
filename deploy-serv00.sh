@@ -22,6 +22,9 @@ if [ "$MODE" = "php" ]; then
     echo "⚠️ 未找到 php/config.php，正在尝试应用默认模板..."
   fi
 
+  echo "🔗 正在尝试自动绑定 Telegram Webhook..."
+  curl -s "https://$DOMAIN/telegram_bot.php?action=set_webhook" || true
+
   echo "======================================================"
   echo "🎉 PHP 模式部署就绪！"
   echo "1. 请确保 Serv00 管理面板中 $DOMAIN 的 Web 类型设为 PHP"

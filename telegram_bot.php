@@ -22,14 +22,18 @@ $action = isset($requestParams['action']) ? $requestParams['action'] : '';
 
 // 1. Webhook 入口 (处理 Telegram 推送过来的消息与按钮 Callback)
 if (empty($action) && (!empty($jsonParams['message']) || !empty($jsonParams['callback_query']))) {
+    $token = $config['telegram_bot_token'];
+    if (!$token) {
+        http_response_code(200);
+        echo "OK";
+        exit;
+    }
+
+    // 先同步调用 Bot 指令与按钮处理模块，完成 Telegram API 响应
+    handleTelegramBotCommandPHP($jsonParams, $token);
+
     http_response_code(200);
     echo "OK";
-
-    $token = $config['telegram_bot_token'];
-    if (!$token) exit;
-
-    // 调用 Bot 指令与按钮处理模块
-    handleTelegramBotCommandPHP($jsonParams, $token);
     exit;
 }
 

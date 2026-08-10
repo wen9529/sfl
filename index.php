@@ -129,6 +129,30 @@
             </form>
         </div>
 
+        <!-- Telegram Webhook One-Click Binding Section (Fix Bot Unresponsive) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2 text-indigo-400 font-bold text-base">
+                    <i class="fas fa-link text-xl"></i> Telegram Webhook 回调激活 
+                    <span class="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded border border-indigo-500/30 font-normal">解决 /start 指令无反应问题</span>
+                </div>
+                <a href="telegram_bot.php?action=set_webhook" target="_blank" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-all shadow-lg flex items-center gap-1.5">
+                    <i class="fas fa-bolt"></i> 🔗 点击一键绑定当前 Webhook
+                </a>
+            </div>
+
+            <div class="bg-slate-950/70 p-4 rounded-xl border border-slate-800/80 text-xs text-slate-300 space-y-2">
+                <div class="font-bold text-sky-400 flex items-center gap-1.5">
+                    <i class="fas fa-question-circle"></i> 为什么推送到频道正常，但发 /start 给 Bot 没有反应？
+                </div>
+                <p class="text-slate-400 leading-relaxed text-[11px]">
+                    1. <b>推送频道</b>是服务器主动向 Telegram 发送消息，只要 Bot Token 和 Chat ID 正确就能成功。<br>
+                    2. <b>回复 /start 或菜单指令</b>是 Telegram 服务器被动将用户消息回调给您的服务器。只有在 Telegram 官方绑定了 Webhook 回调地址后，Telegram 才会将用户的 <code>/start</code> 指令推送过来。<br>
+                    3. 部署到 Serv00 或新主机后，请点击上方<b>【🔗 点击一键绑定当前 Webhook】</b>按钮（即访问 <code>telegram_bot.php?action=set_webhook</code>），绑定成功后 Bot 即可秒级响应所有指令与按钮！
+                </p>
+            </div>
+        </div>
+
     </main>
 
     <footer class="bg-slate-950 border-t border-slate-800 py-4 text-center text-xs text-slate-500">
