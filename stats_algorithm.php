@@ -224,95 +224,257 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             if ($fFreq <= 4) $scores[$n] += 0.08; // 五行补偿
         }
 
-        // 5. 属性级别：计算大小、单双、波色的一阶马尔可夫转移概率
-        $bigToBig = 0; $bigToSmall = 0; $smallToBig = 0; $smallToSmall = 0;
-        $oddToOdd = 0; $oddToEven = 0; $evenToOdd = 0; $evenToEven = 0;
-        $redToRed = 0; $redToBlue = 0; $redToGreen = 0;
-        $blueToRed = 0; $blueToBlue = 0; $blueToGreen = 0;
-        $greenToRed = 0; $greenToBlue = 0; $greenToGreen = 0;
+        // 5. 属性级别：二阶马尔可夫条件转移矩阵 (含拉普拉斯平滑)
+        $waveMarkov2nd = [
+            'red_red' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'red_blue' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'red_green' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'blue_red' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'blue_blue' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'blue_green' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'green_red' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'green_blue' => ['red' => 1, 'blue' => 1, 'green' => 1],
+            'green_green' => ['red' => 1, 'blue' => 1, 'green' => 1],
+        ];
 
-        for ($i = count($recentDraws) - 2; $i >= 0; $i--) {
+        $bbToB = 0; $bbToS = 0; $bsToB = 0; $bsToS = 0;
+        $sbToB = 0; $sbToS = 0; $ssToB = 0; $ssToS = 0;
+        $ooToO = 0; $ooToE = 0; $oeToO = 0; $oeToE = 0;
+        $eoToO = 0; $eoToE = 0; $eeToO = 0; $eeToE = 0;
+
+        for ($i = count($recentDraws) - 3; $i >= 0; $i--) {
+            $prev2Draw = $recentDraws[$i + 2];
             $prevDraw = $recentDraws[$i + 1];
             $currDraw = $recentDraws[$i];
+            $prev2Codes = array_map('intval', explode(',', $prev2Draw['openCode']));
             $prevCodes = array_map('intval', explode(',', $prevDraw['openCode']));
             $currCodes = array_map('intval', explode(',', $currDraw['openCode']));
-            if (count($prevCodes) < 7 || count($currCodes) < 7) continue;
+            if (count($prev2Codes) < 7 || count($prevCodes) < 7 || count($currCodes) < 7) continue;
 
+            $prev2Sp = $prev2Codes[6];
             $prevSp = $prevCodes[6];
             $currSp = $currCodes[6];
-            if ($prevSp === 49 || $currSp === 49) continue;
+            if ($prev2Sp === 49 || $prevSp === 49 || $currSp === 49) continue;
 
+            $prev2Big = $prev2Sp >= 25;
             $prevBig = $prevSp >= 25;
             $currBig = $currSp >= 25;
+
+            $prev2Odd = $prev2Sp % 2 !== 0;
             $prevOdd = $prevSp % 2 !== 0;
             $currOdd = $currSp % 2 !== 0;
 
-            $prevWave = getWaveColorPHP($prevSp);
-            $currWave = getWaveColorPHP($currSp);
+            $prev2W = getWaveColorPHP($prev2Sp);
+            $prevW = getWaveColorPHP($prevSp);
+            $currW = getWaveColorPHP($currSp);
 
-            if ($prevBig) {
-                if ($currBig) $bigToBig++; else $bigToSmall++;
+            if ($prev2Big && $prevBig) {
+                if ($currBig) $bbToB++; else $bbToS++;
+            } elseif ($prev2Big && !$prevBig) {
+                if ($currBig) $bsToB++; else $bsToS++;
+            } elseif (!$prev2Big && $prevBig) {
+                if ($currBig) $sbToB++; else $sbToS++;
             } else {
-                if ($currBig) $smallToBig++; else $smallToSmall++;
+                if ($currBig) $ssToB++; else $ssToS++;
             }
 
-            if ($prevOdd) {
-                if ($currOdd) $oddToOdd++; else $oddToEven++;
+            if ($prev2Odd && $prevOdd) {
+                if ($currOdd) $ooToO++; else $ooToE++;
+            } elseif ($prev2Odd && !$prevOdd) {
+                if ($currOdd) $oeToO++; else $oeToE++;
+            } elseif (!$prev2Odd && $prevOdd) {
+                if ($currOdd) $eoToO++; else $eoToE++;
             } else {
-                if ($currOdd) $evenToOdd++; else $evenToEven++;
+                if ($currOdd) $eeToO++; else $eeToE++;
             }
 
-            if ($prevWave === 'red') {
-                if ($currWave === 'red') $redToRed++; else if ($currWave === 'blue') $redToBlue++; else $redToGreen++;
-            } else if ($prevWave === 'blue') {
-                if ($currWave === 'red') $blueToRed++; else if ($currWave === 'blue') $blueToBlue++; else $blueToGreen++;
-            } else {
-                if ($currWave === 'red') $greenToRed++; else if ($currWave === 'blue') $greenToBlue++; else $greenToGreen++;
+            $wKey = "{$prev2W}_{$prevW}";
+            if (isset($waveMarkov2nd[$wKey])) {
+                $waveMarkov2nd[$wKey][$currW]++;
             }
         }
 
+        $prevDraw0 = $draws[1] ?? $draws[0];
+        $prevCodes0 = array_map('intval', explode(',', $prevDraw0['openCode']));
+        $prevSpecial = $prevCodes0[6] ?? $lastSpecial;
+
         $lastBig = $lastSpecial >= 25;
+        $prevBig = $prevSpecial >= 25;
         $lastOdd = $lastSpecial % 2 !== 0;
+        $prevOdd = $prevSpecial % 2 !== 0;
         $lastWave = getWaveColorPHP($lastSpecial);
+        $prevWave = getWaveColorPHP($prevSpecial);
 
         $pBig = 0.5; $pSmall = 0.5;
         $pOdd = 0.5; $pEven = 0.5;
-        $pRed = 0.33; $pBlue = 0.33; $pGreen = 0.33;
 
-        if ($lastSpecial !== 49) {
-            if ($lastBig) {
-                $tot = $bigToBig + $bigToSmall;
-                if ($tot > 0) { $pBig = $bigToBig / $tot; $pSmall = $bigToSmall / $tot; }
+        if ($lastSpecial !== 49 && $prevSpecial !== 49) {
+            if ($prevBig && $lastBig) {
+                $tot = $bbToB + $bbToS;
+                if ($tot > 0) { $pBig = $bbToB / $tot; $pSmall = $bbToS / $tot; }
+            } elseif ($prevBig && !$lastBig) {
+                $tot = $bsToB + $bsToS;
+                if ($tot > 0) { $pBig = $bsToB / $tot; $pSmall = $bsToS / $tot; }
+            } elseif (!$prevBig && $lastBig) {
+                $tot = $sbToB + $sbToS;
+                if ($tot > 0) { $pBig = $sbToB / $tot; $pSmall = $sbToS / $tot; }
             } else {
-                $tot = $smallToBig + $smallToSmall;
-                if ($tot > 0) { $pBig = $smallToBig / $tot; $pSmall = $smallToSmall / $tot; }
+                $tot = $ssToB + $ssToS;
+                if ($tot > 0) { $pBig = $ssToB / $tot; $pSmall = $ssToS / $tot; }
             }
 
-            if ($lastOdd) {
-                $tot = $oddToOdd + $oddToEven;
-                if ($tot > 0) { $pOdd = $oddToOdd / $tot; $pEven = $oddToEven / $tot; }
+            if ($prevOdd && $lastOdd) {
+                $tot = $ooToO + $ooToE;
+                if ($tot > 0) { $pOdd = $ooToO / $tot; $pEven = $ooToE / $tot; }
+            } elseif ($prevOdd && !$lastOdd) {
+                $tot = $oeToO + $oeToE;
+                if ($tot > 0) { $pOdd = $oeToO / $tot; $pEven = $oeToE / $tot; }
+            } elseif (!$prevOdd && $lastOdd) {
+                $tot = $eoToO + $eoToE;
+                if ($tot > 0) { $pOdd = $eoToO / $tot; $pEven = $eoToE / $tot; }
             } else {
-                $tot = $evenToOdd + $evenToEven;
-                if ($tot > 0) { $pOdd = $evenToOdd / $tot; $pEven = $evenToEven / $tot; }
-            }
-
-            if ($lastWave === 'red') {
-                $tot = $redToRed + $redToBlue + $redToGreen;
-                if ($tot > 0) { $pRed = $redToRed / $tot; $pBlue = $redToBlue / $tot; $pGreen = $redToGreen / $tot; }
-            } else if ($lastWave === 'blue') {
-                $tot = $blueToRed + $blueToBlue + $blueToGreen;
-                if ($tot > 0) { $pRed = $blueToRed / $tot; $pBlue = $blueToBlue / $tot; $pGreen = $blueToGreen / $tot; }
-            } else {
-                $tot = $greenToRed + $greenToBlue + $greenToGreen;
-                if ($tot > 0) { $pRed = $greenToRed / $tot; $pBlue = $greenToBlue / $tot; $pGreen = $greenToGreen / $tot; }
+                $tot = $eeToO + $eeToE;
+                if ($tot > 0) { $pOdd = $eeToO / $tot; $pEven = $eeToE / $tot; }
             }
         }
 
-        // 6. 长龙检测与自适应阻断策略 (Dragon Factor)
-        $consecutiveBig = 0;
-        $consecutiveSmall = 0;
-        $consecutiveOdd = 0;
-        $consecutiveEven = 0;
+        $markovWaveKey = "{$prevWave}_{$lastWave}";
+        $mWaveCounts = $waveMarkov2nd[$markovWaveKey] ?? ['red' => 1, 'blue' => 1, 'green' => 1];
+        $mWaveTot = $mWaveCounts['red'] + $mWaveCounts['blue'] + $mWaveCounts['green'];
+        $pRed = $mWaveCounts['red'] / $mWaveTot;
+        $pBlue = $mWaveCounts['blue'] / $mWaveTot;
+        $pGreen = $mWaveCounts['green'] / $mWaveTot;
+
+        // 5.5 多时段指数衰减均值回归 (Multi-Horizon Wave / Size / Parity Decay)
+        $horizons = [
+            ['period' => 15, 'lambda' => 0.05, 'weight' => 0.45],
+            ['period' => 50, 'lambda' => 0.015, 'weight' => 0.35],
+            ['period' => 100, 'lambda' => 0.006, 'weight' => 0.20],
+        ];
+
+        $integratedSizeProb = 0.0;
+        $integratedParityProb = 0.0;
+        $integratedWaveProb = ['red' => 0.0, 'blue' => 0.0, 'green' => 0.0];
+
+        foreach ($horizons as $hor) {
+            $lim = min(count($draws), $hor['period']);
+            $sizeSum = 0; $paritySum = 0;
+            $waveRedSum = 0; $waveBlueSum = 0; $waveGreenSum = 0;
+            $weightSum = 0;
+
+            for ($t = 0; $t < $lim; $t++) {
+                $codes = array_map('intval', explode(',', $draws[$t]['openCode']));
+                if (count($codes) >= 7) {
+                    $sp = $codes[6];
+                    if ($sp === 49) continue;
+                    $decayW = exp(-$hor['lambda'] * $t);
+                    $sizeSum += ($sp >= 25 ? 1 : 0) * $decayW;
+                    $paritySum += ($sp % 2 !== 0 ? 1 : 0) * $decayW;
+
+                    $w = getWaveColorPHP($sp);
+                    if ($w === 'red') $waveRedSum += $decayW;
+                    elseif ($w === 'blue') $waveBlueSum += $decayW;
+                    else $waveGreenSum += $decayW;
+
+                    $weightSum += $decayW;
+                }
+            }
+
+            $sizeRatio = $weightSum > 0 ? $sizeSum / $weightSum : 0.5;
+            $parityRatio = $weightSum > 0 ? $paritySum / $weightSum : 0.5;
+            $waveRedRatio = $weightSum > 0 ? $waveRedSum / $weightSum : 0.347;
+            $waveBlueRatio = $weightSum > 0 ? $waveBlueSum / $weightSum : 0.3265;
+            $waveGreenRatio = $weightSum > 0 ? $waveGreenSum / $weightSum : 0.3265;
+
+            $integratedSizeProb += (1.0 - $sizeRatio) * $hor['weight'];
+            $integratedParityProb += (1.0 - $parityRatio) * $hor['weight'];
+
+            $revRed = max(0.1, 0.347 + (0.347 - $waveRedRatio) * 0.8);
+            $revBlue = max(0.1, 0.3265 + (0.3265 - $waveBlueRatio) * 0.8);
+            $revGreen = max(0.1, 0.3265 + (0.3265 - $waveGreenRatio) * 0.8);
+            $sumRev = $revRed + $revBlue + $revGreen;
+
+            $integratedWaveProb['red'] += ($revRed / $sumRev) * $hor['weight'];
+            $integratedWaveProb['blue'] += ($revBlue / $sumRev) * $hor['weight'];
+            $integratedWaveProb['green'] += ($revGreen / $sumRev) * $hor['weight'];
+        }
+
+        // 5.6 N-Gram 模式序列匹配 (大小、单双、波色)
+        $nGramSizeProb = 0.5;
+        $nGramParityProb = 0.5;
+        $nGramWaveProb = ['red' => 0.347, 'blue' => 0.3265, 'green' => 0.3265];
+        $nGramMatches = 0;
+
+        if (count($draws) >= 10) {
+            $recentPSize = []; $recentPOdd = []; $recentPWave = [];
+            $validCount = 0;
+            for ($i = 0; $i < count($draws) && $validCount < 3; $i++) {
+                $c = array_map('intval', explode(',', $draws[$i]['openCode']));
+                if (count($c) >= 7 && $c[6] !== 49) {
+                    $recentPSize[] = $c[6] >= 25;
+                    $recentPOdd[] = $c[6] % 2 !== 0;
+                    $recentPWave[] = getWaveColorPHP($c[6]);
+                    $validCount++;
+                }
+            }
+
+            if ($validCount === 3) {
+                $pSize = [$recentPSize[2], $recentPSize[1], $recentPSize[0]];
+                $pOdd = [$recentPOdd[2], $recentPOdd[1], $recentPOdd[0]];
+                $pWave = [$recentPWave[2], $recentPWave[1], $recentPWave[0]];
+
+                $mSBig = 0; $mSTot = 0;
+                $mOOdd = 0; $mOTot = 0;
+                $mWRed = 0; $mWBlue = 0; $mWGreen = 0; $mWTot = 0;
+
+                $maxSearch = min(count($draws) - 4, 100);
+                for ($i = 0; $i < $maxSearch; $i++) {
+                    $balls = [];
+                    for ($j = 0; $j < 4; $j++) {
+                        $c = array_map('intval', explode(',', $draws[$i + $j]['openCode']));
+                        if (count($c) >= 7 && $c[6] !== 49) $balls[] = $c[6];
+                    }
+                    if (count($balls) === 4) {
+                        $hSize = [$balls[3] >= 25, $balls[2] >= 25, $balls[1] >= 25];
+                        $hNextSize = $balls[0] >= 25;
+                        $hOdd = [$balls[3] % 2 !== 0, $balls[2] % 2 !== 0, $balls[1] % 2 !== 0];
+                        $hNextOdd = $balls[0] % 2 !== 0;
+                        $hWave = [getWaveColorPHP($balls[3]), getWaveColorPHP($balls[2]), getWaveColorPHP($balls[1])];
+                        $hNextWave = getWaveColorPHP($balls[0]);
+
+                        if ($hSize === $pSize) {
+                            $mSTot++;
+                            if ($hNextSize) $mSBig++;
+                        }
+                        if ($hOdd === $pOdd) {
+                            $mOTot++;
+                            if ($hNextOdd) $mOOdd++;
+                        }
+                        if ($hWave === $pWave) {
+                            $mWTot++;
+                            if ($hNextWave === 'red') $mWRed++;
+                            elseif ($hNextWave === 'blue') $mWBlue++;
+                            else $mWGreen++;
+                        }
+                    }
+                }
+
+                if ($mSTot > 0) { $nGramSizeProb = $mSBig / $mSTot; $nGramMatches = $mSTot; }
+                if ($mOTot > 0) { $nGramParityProb = $mOOdd / $mOTot; }
+                if ($mWTot > 0) {
+                    $nGramWaveProb = [
+                        'red' => ($mWRed + 0.35) / ($mWTot + 1.0),
+                        'blue' => ($mWBlue + 0.33) / ($mWTot + 1.0),
+                        'green' => ($mWGreen + 0.33) / ($mWTot + 1.0),
+                    ];
+                }
+            }
+        }
+
+        // 6. 长龙检测与自适应阻断策略 (Dragon Factor & Wave Cold Omission)
+        $consecutiveBig = 0; $consecutiveSmall = 0;
+        $consecutiveOdd = 0; $consecutiveEven = 0;
+        $consecutiveWaveColor = null; $consecutiveWaveCount = 0;
 
         foreach ($draws as $draw) {
             $codes = array_map('intval', explode(',', $draw['openCode']));
@@ -342,28 +504,79 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             }
         }
 
+        foreach ($draws as $draw) {
+            $codes = array_map('intval', explode(',', $draw['openCode']));
+            if (count($codes) < 7) break;
+            $sp = $codes[6];
+            if ($sp === 49) break;
+            $w = getWaveColorPHP($sp);
+            if ($consecutiveWaveColor === null) {
+                $consecutiveWaveColor = $w;
+                $consecutiveWaveCount = 1;
+            } elseif ($consecutiveWaveColor === $w) {
+                $consecutiveWaveCount++;
+            } else {
+                break;
+            }
+        }
+
+        // 计算波色遗漏期数
+        $omitRed = 0; $omitBlue = 0; $omitGreen = 0;
+        $foundRed = false; $foundBlue = false; $foundGreen = false;
+        foreach ($draws as $draw) {
+            $codes = array_map('intval', explode(',', $draw['openCode']));
+            if (count($codes) < 7) continue;
+            $sp = $codes[6];
+            if ($sp === 49) continue;
+            $w = getWaveColorPHP($sp);
+            if ($w === 'red') $foundRed = true; elseif (!$foundRed) $omitRed++;
+            if ($w === 'blue') $foundBlue = true; elseif (!$foundBlue) $omitBlue++;
+            if ($w === 'green') $foundGreen = true; elseif (!$foundGreen) $omitGreen++;
+            if ($foundRed && $foundBlue && $foundGreen) break;
+        }
+
         $dragonSizeMultiplier = 1.0;
         $dragonParityMultiplier = 1.0;
         $sizeDirection = null;
         $parityDirection = null;
 
-        if ($consecutiveBig >= 4) {
-            $sizeDirection = '小';
-            $dragonSizeMultiplier = 1.0 + ($consecutiveBig - 3) * 0.15;
-        } else if ($consecutiveSmall >= 4) {
-            $sizeDirection = '大';
-            $dragonSizeMultiplier = 1.0 + ($consecutiveSmall - 3) * 0.15;
+        if ($consecutiveBig >= 3) {
+            if ($consecutiveBig <= 5) {
+                $sizeDirection = '小';
+                $dragonSizeMultiplier = 1.0 + ($consecutiveBig - 2) * 0.25;
+            } else {
+                $sizeDirection = '大';
+                $dragonSizeMultiplier = 1.0 + ($consecutiveBig - 5) * 0.20;
+            }
+        } elseif ($consecutiveSmall >= 3) {
+            if ($consecutiveSmall <= 5) {
+                $sizeDirection = '大';
+                $dragonSizeMultiplier = 1.0 + ($consecutiveSmall - 2) * 0.25;
+            } else {
+                $sizeDirection = '小';
+                $dragonSizeMultiplier = 1.0 + ($consecutiveSmall - 5) * 0.20;
+            }
         }
 
-        if ($consecutiveOdd >= 4) {
-            $parityDirection = '双';
-            $dragonParityMultiplier = 1.0 + ($consecutiveOdd - 3) * 0.15;
-        } else if ($consecutiveEven >= 4) {
-            $parityDirection = '单';
-            $dragonParityMultiplier = 1.0 + ($consecutiveEven - 3) * 0.15;
+        if ($consecutiveOdd >= 3) {
+            if ($consecutiveOdd <= 5) {
+                $parityDirection = '双';
+                $dragonParityMultiplier = 1.0 + ($consecutiveOdd - 2) * 0.25;
+            } else {
+                $parityDirection = '单';
+                $dragonParityMultiplier = 1.0 + ($consecutiveOdd - 5) * 0.20;
+            }
+        } elseif ($consecutiveEven >= 3) {
+            if ($consecutiveEven <= 5) {
+                $parityDirection = '单';
+                $dragonParityMultiplier = 1.0 + ($consecutiveEven - 2) * 0.25;
+            } else {
+                $parityDirection = '双';
+                $dragonParityMultiplier = 1.0 + ($consecutiveEven - 5) * 0.20;
+            }
         }
 
-        // 7. 号码分数归一化，并计算各属性在 1-49 号码分布上的概率得分
+        // 7. 号码分数归一化，计算号码级贝叶斯密度
         $sumScore = array_sum($scores);
 
         $scoreBig = 0; $scoreSmall = 0;
@@ -371,7 +584,7 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
         $scoreRed = 0; $scoreBlue = 0; $scoreGreen = 0;
 
         for ($n = 1; $n <= 49; $n++) {
-            $prob = $scores[$n] / $sumScore;
+            $prob = $scores[$n] / ($sumScore ?: 1);
             $isNBig = $n >= 25;
             $isNOdd = $n % 2 !== 0;
             $w = getWaveColorPHP($n);
@@ -385,38 +598,73 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             else $scoreGreen += $prob;
         }
 
-        // 8. 结合马尔可夫概率和长龙自适应策略，计算最终决策分数
-        $finalBigScore = $scoreBig * $pBig;
-        $finalSmallScore = $scoreSmall * $pSmall;
-        $finalOddScore = $scoreOdd * $pOdd;
-        $finalEvenScore = $scoreEven * $pEven;
+        // 归一化球均密度 (红17码，蓝16码，绿16码)
+        $densityRed = $scoreRed / 17;
+        $densityBlue = $scoreBlue / 16;
+        $densityGreen = $scoreGreen / 16;
+        $sumDensity = $densityRed + $densityBlue + $densityGreen ?: 1;
+        $normDensityRed = $densityRed / $sumDensity;
+        $normDensityBlue = $densityBlue / $sumDensity;
+        $normDensityGreen = $densityGreen / $sumDensity;
 
-        if ($sizeDirection === '小') {
-            $finalSmallScore *= $dragonSizeMultiplier;
-        } elseif ($sizeDirection === '大') {
-            $finalBigScore *= $dragonSizeMultiplier;
-        }
+        // 8. 结合多时段衰减、马氏链、N-Gram 与长龙自适应策略，计算最终决策分数
+        $weightMH = 0.40; $weightMK = 0.30; $weightNG = 0.30;
+        $finalBigScore = ($integratedSizeProb) * $weightMH + ($scoreBig * $pBig) * $weightMK + ($nGramSizeProb) * $weightNG;
+        $finalSmallScore = (1.0 - $integratedSizeProb) * $weightMH + ($scoreSmall * $pSmall) * $weightMK + (1.0 - $nGramSizeProb) * $weightNG;
+        $finalOddScore = ($integratedParityProb) * $weightMH + ($scoreOdd * $pOdd) * $weightMK + ($nGramParityProb) * $weightNG;
+        $finalEvenScore = (1.0 - $integratedParityProb) * $weightMH + ($scoreEven * $pEven) * $weightMK + (1.0 - $nGramParityProb) * $weightNG;
 
-        if ($parityDirection === '双') {
-            $finalEvenScore *= $dragonParityMultiplier;
-        } elseif ($parityDirection === '单') {
-            $finalOddScore *= $dragonParityMultiplier;
-        }
+        if ($sizeDirection === '小') $finalSmallScore *= $dragonSizeMultiplier;
+        elseif ($sizeDirection === '大') $finalBigScore *= $dragonSizeMultiplier;
+
+        if ($parityDirection === '双') $finalEvenScore *= $dragonParityMultiplier;
+        elseif ($parityDirection === '单') $finalOddScore *= $dragonParityMultiplier;
 
         $sizePred = $finalBigScore >= $finalSmallScore ? '大' : '小';
         $parityPred = $finalOddScore >= $finalEvenScore ? '单' : '双';
 
-        // 波色决策
-        $finalRedScore = $scoreRed * $pRed;
-        $finalBlueScore = $scoreBlue * $pBlue;
-        $finalGreenScore = $scoreGreen * $pGreen;
+        // 波色多模型融合决策
+        $finalRedScore = ($integratedWaveProb['red']) * $weightMH + ($pRed) * $weightMK + ($nGramWaveProb['red']) * $weightNG + $normDensityRed * 0.25;
+        $finalBlueScore = ($integratedWaveProb['blue']) * $weightMH + ($pBlue) * $weightMK + ($nGramWaveProb['blue']) * $weightNG + $normDensityBlue * 0.25;
+        $finalGreenScore = ($integratedWaveProb['green']) * $weightMH + ($pGreen) * $weightMK + ($nGramWaveProb['green']) * $weightNG + $normDensityGreen * 0.25;
+
+        // 极冷波色反弹加权
+        if ($omitRed >= 4) $finalRedScore *= (1.0 + ($omitRed - 3) * 0.22);
+        if ($omitBlue >= 4) $finalBlueScore *= (1.0 + ($omitBlue - 3) * 0.22);
+        if ($omitGreen >= 4) $finalGreenScore *= (1.0 + ($omitGreen - 3) * 0.22);
+
+        // 波色长龙迟滞与顺推
+        $waveDragonAction = null;
+        if ($consecutiveWaveCount >= 2 && $consecutiveWaveCount <= 4 && $consecutiveWaveColor) {
+            $waveDragonAction = "REVERSE_" . strtoupper($consecutiveWaveColor);
+            if ($consecutiveWaveColor === 'red') {
+                $finalRedScore *= 0.75; $finalBlueScore *= 1.15; $finalGreenScore *= 1.15;
+            } elseif ($consecutiveWaveColor === 'blue') {
+                $finalBlueScore *= 0.75; $finalRedScore *= 1.15; $finalGreenScore *= 1.15;
+            } else {
+                $finalGreenScore *= 0.75; $finalRedScore *= 1.15; $finalBlueScore *= 1.15;
+            }
+        } elseif ($consecutiveWaveCount >= 5 && $consecutiveWaveColor) {
+            $waveDragonAction = "FOLLOW_" . strtoupper($consecutiveWaveColor);
+            if ($consecutiveWaveColor === 'red') $finalRedScore *= 1.40;
+            elseif ($consecutiveWaveColor === 'blue') $finalBlueScore *= 1.40;
+            else $finalGreenScore *= 1.40;
+        }
+
+        $baseRed = 17 / 49;
+        $baseBlue = 16 / 49;
+        $baseGreen = 16 / 49;
+
+        $redLift = $finalRedScore / $baseRed;
+        $blueLift = $finalBlueScore / $baseBlue;
+        $greenLift = $finalGreenScore / $baseGreen;
 
         $colorPred = '红波';
         $colorOdds = 2.75;
-        if ($finalRedScore >= $finalBlueScore && $finalRedScore >= $finalGreenScore) {
+        if ($redLift >= $blueLift && $redLift >= $greenLift) {
             $colorPred = '红波';
             $colorOdds = 2.75;
-        } elseif ($finalBlueScore >= $finalGreenScore) {
+        } elseif ($blueLift >= $greenLift) {
             $colorPred = '蓝波';
             $colorOdds = 2.98;
         } else {
@@ -437,33 +685,49 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
         $confidence = round(($sizeConfidence + $parityConfidence + $colorConfidence) / 3);
 
         // 10. 生成极具说服力、专业的决策理由
+        $totColorSum = $finalRedScore + $finalBlueScore + $finalGreenScore ?: 1;
+        $pctRed = round(($finalRedScore / $totColorSum) * 100);
+        $pctBlue = round(($finalBlueScore / $totColorSum) * 100);
+        $pctGreen = round(($finalGreenScore / $totColorSum) * 100);
+
         $rparts = [];
+        $rparts[] = "【自适应系统权重分配】：指数时间衰减核 w1=40% | 双阶马氏转移矩阵 w2=30% | 序列模式 N-Gram w3=30%";
+
         $sizeReason = '';
         if ($sizeDirection) {
-            $sizeReason = "连开 " . ($consecutiveBig ?: $consecutiveSmall) . " 期，阻断偏向买" . $sizePred;
-            $rparts[] = "大小属性：长龙连开 " . ($consecutiveBig ?: $consecutiveSmall) . " 期，触发“自适应长龙阻断”反转买" . $sizePred;
+            $sizeReason = "连开 " . ($consecutiveBig ?: $consecutiveSmall) . " 期，触发长龙自适应买" . $sizePred;
+            $rparts[] = "【大小维度】：长龙连开 " . ($consecutiveBig ?: $consecutiveSmall) . " 期，触发自适应动态阻断与顺推买【" . $sizePred . "】";
         } else {
-            $sizeReason = "转移概率 P(" . ($lastBig ? '大' : '小') . "->" . $sizePred . ")=" . round(max($pBig, $pSmall) * 100) . "%";
-            $rparts[] = "大小属性：基于一阶马尔可夫转移概率 P(" . ($lastBig ? '大' : '小') . " -> " . $sizePred . ") = " . round(max($pBig, $pSmall) * 100) . "%，结合 1-49 号码得分归一判定买【" . $sizePred . "】";
+            $sizeReason = "多时段核均值(" . round($integratedSizeProb * 100) . "%)协同Markov推导买" . $sizePred;
+            $rparts[] = "【大小维度 - 级联集成】：多时段核分布均值(" . round($integratedSizeProb * 100) . "%偏大期望) 协同 Markov 与 N-Gram 判定买【" . $sizePred . "】";
         }
 
         $parityReason = '';
         if ($parityDirection) {
-            $parityReason = "连开 " . ($consecutiveOdd ?: $consecutiveEven) . " 期，极值回归买" . $parityPred;
-            $rparts[] = "单双属性：长龙连开 " . ($consecutiveOdd ?: $consecutiveEven) . " 期，触发“波动性极值回归”判定买【" . $parityPred . "】";
+            $parityReason = "连开 " . ($consecutiveOdd ?: $consecutiveEven) . " 期，均值回归买" . $parityPred;
+            $rparts[] = "【单双维度】：单双形态连出 " . ($consecutiveOdd ?: $consecutiveEven) . " 期，触发极点偏离校正买【" . $parityPred . "】";
         } else {
-            $parityReason = "转移概率 P(" . ($lastOdd ? '单' : '双') . "->" . $parityPred . ")=" . round(max($pOdd, $pEven) * 100) . "%";
-            $rparts[] = "单双属性：基于一阶马尔可夫转移概率 P(" . ($lastOdd ? '单' : '双') . " -> " . $parityPred . ") = " . round(max($pOdd, $pEven) * 100) . "%，结合 30 期生肖/五行补偿判定买【" . $parityPred . "】";
+            $parityReason = "短中长衰减投票(" . round($integratedParityProb * 100) . "%)推导买" . $parityPred;
+            $rparts[] = "【单双维度 - 级联集成】：衰减投票(" . round($integratedParityProb * 100) . "%偏单期望) 融合马尔可夫概率判定买【" . $parityPred . "】";
         }
 
-        $colorReason = "红/蓝/绿归一占比 " . round($finalRedScore * 100) . "%:" . round($finalBlueScore * 100) . "%:" . round($finalGreenScore * 100) . "%";
-        $rparts[] = "波色决策：红/蓝/绿概率密度归一配重比为 " . round($finalRedScore * 100) . "% : " . round($finalBlueScore * 100) . "% : " . round($finalGreenScore * 100) . "%，优选【" . $colorPred . "】";
+        $colorReason = "红/蓝/绿配重 " . $pctRed . "%:" . $pctBlue . "%:" . $pctGreen . "%";
+        if ($waveDragonAction && strpos($waveDragonAction, 'FOLLOW') === 0) {
+            $rparts[] = "【波色维度 - 顺龙追踪】：波色连出 {$consecutiveWaveCount} 期顺风锁定【{$colorPred}】(红蓝绿比重 {$pctRed}% : {$pctBlue}% : {$pctGreen}%)";
+        } elseif ($waveDragonAction && strpos($waveDragonAction, 'REVERSE') === 0) {
+            $rparts[] = "【波色维度 - 极值反转】：前序波色连开 {$consecutiveWaveCount} 期达拐点，分流反转优选【{$colorPred}】(红蓝绿比重 {$pctRed}% : {$pctBlue}% : {$pctGreen}%)";
+        } elseif ($omitRed >= 4 || $omitBlue >= 4 || $omitGreen >= 4) {
+            $coldName = $omitRed >= 4 ? "红波(遗漏{$omitRed}期)" : ($omitBlue >= 4 ? "蓝波(遗漏{$omitBlue}期)" : "绿波(遗漏{$omitGreen}期)");
+            $rparts[] = "【波色维度 - 极冷回归】：侦测到 {$coldName} 偏离周期反弹加权，推荐【{$colorPred}】(红蓝绿比重 {$pctRed}% : {$pctBlue}% : {$pctGreen}%)";
+        } else {
+            $rparts[] = "【波色维度 - 多模型融合】：二阶马氏概率协同核密度均值，红蓝绿配重 {$pctRed}% : {$pctBlue}% : {$pctGreen}%，推荐【{$colorPred}】";
+        }
 
         $rationale = implode("\n", $rparts);
 
         return [
             'targetIssue' => $nextIssue,
-            'algorithmName' => '自适应级联统计集成模型 v4.0',
+            'algorithmName' => '自适应软极值动态集成推演引擎 v6.0',
             'confidence' => $confidence,
             'sizeConfidence' => $sizeConfidence,
             'parityConfidence' => $parityConfidence,
