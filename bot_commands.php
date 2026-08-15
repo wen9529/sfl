@@ -371,9 +371,10 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         }
 
         // 6. 默认兜底响应: 无论用户输入任何文本或未知指令，均回复帮助菜单卡片
+        $safeText = htmlspecialchars($text ?: '快捷交互', ENT_QUOTES, 'UTF-8');
         $defaultMsg = "<b>🎰 澳门三分六合彩 · Telegram Bot 极速助手</b>\n"
                     . "--------------------------------------\n"
-                    . "收到消息/指令: <code>{$text}</code>\n"
+                    . "收到消息/指令: <code>{$safeText}</code>\n"
                     . "请使用下方【键盘菜单】或选择常用功能：\n\n"
                     . "🎰 <b>/draw</b> - 查询最新开奖结果\n"
                     . "📜 <b>/history</b> - 查看 50 期历史开奖\n"

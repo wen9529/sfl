@@ -284,11 +284,12 @@ ${statusText}
     return;
   }
 
+  const safeText = (text || '快捷交互').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   // 默认兜底响应: 无论用户输入任何文本或未知指令，均友好回复交互菜单
   const defaultHelpMsg = `
 <b>🎰 澳门三分六合彩 · Telegram Bot 极速助手</b>
 --------------------------------------
-收到消息/指令: <code>${text || '快捷交互'}</code>
+收到消息/指令: <code>${safeText}</code>
 请使用下方【键盘菜单】或选择常用功能：
 
 🎰 <b>/draw</b> - 查询最新开奖结果
