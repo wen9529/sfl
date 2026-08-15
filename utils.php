@@ -4,10 +4,10 @@
  */
 
 if (!function_exists('getWaveColorPHP')) {
-    // 获取号码波色 (六合彩标准49码波色：红波17码、蓝波16码、绿波16码)
+    // 获取号码波色 (按2026年生肖卡规则)
     function getWaveColorPHP($num) {
-        $reds = [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46];
-        $blues = [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48];
+        $reds = [1, 2, 7, 8, 9, 12, 13, 18, 19, 23, 24, 28, 29, 30, 34, 35, 37, 40, 41, 45, 48];
+        $blues = [3, 4, 10, 14, 15, 20, 25, 26, 31, 36, 42];
         if (in_array((int)$num, $reds)) return 'red';
         if (in_array((int)$num, $blues)) return 'blue';
         return 'green';
@@ -71,45 +71,20 @@ if (!function_exists('writeLogPHP')) {
 }
 
 if (!function_exists('sendTgRequestPHP')) {
-    // 发送 Telegram API 请求 (增强网络稳定性与详细错误捕捉)
+    // 发送 Telegram API 请求
     function sendTgRequestPHP($token, $method, $data) {
-        $apiBase = rtrim($_ENV['TELEGRAM_API_BASE'] ?? getenv('TELEGRAM_API_BASE') ?: 'https://api.telegram.org', '/');
-        $url = "{$apiBase}/bot{$token}/{$method}";
+        $url = "https://api.telegram.org/bot{$token}/{$method}";
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_POST, true);
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-        // 关键：强制使用 IPv4 解析，避免 Serv00 等主机 IPv6 路由超时
-        if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
-            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-        }
+        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_USERAGENT, 'MacauLotteryBot/1.0');
-        
         $result = curl_exec($ch);
-        $curlErr = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
-
-        $decoded = json_decode($result, true);
-        if (is_array($decoded)) {
-            $decoded['http_code'] = $httpCode;
-            if ($curlErr) $decoded['curl_error'] = $curlErr;
-            return $decoded;
-        }
-
-        return [
-            'ok' => false,
-            'http_code' => $httpCode,
-            'description' => !empty($curlErr) ? "cURL网络错误: {$curlErr} (HTTP {$httpCode})" : "Telegram API 无响应 (HTTP {$httpCode})",
-            'curl_error' => $curlErr,
-            'raw' => $result
-        ];
+        return json_decode($result, true) ?: [];
     }
 }
 

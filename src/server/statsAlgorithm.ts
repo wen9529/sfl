@@ -233,18 +233,15 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   }
 
   // ==========================================
-  // 2. N-Gram 序列状态链模式匹配引擎 (大小、单双、波色)
+  // 2. N-Gram 序列状态链模式匹配引擎
   // ==========================================
   let nGramSizeProb = 0.5;
   let nGramParityProb = 0.5;
   let nGramMatches = 0;
-  let nGramWaveProb = { red: 0.347, blue: 0.3265, green: 0.3265 };
-  let nGramWaveMatches = 0;
 
   if (draws.length >= 10) {
     const recentPatternSize: boolean[] = [];
     const recentPatternOdd: boolean[] = [];
-    const recentPatternWave: string[] = [];
     let validPatternCount = 0;
 
     for (let i = 0; i < draws.length && validPatternCount < 3; i++) {
@@ -254,7 +251,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         if (special !== 49) {
           recentPatternSize.push(special >= 25);
           recentPatternOdd.push(special % 2 !== 0);
-          recentPatternWave.push(getWaveColor(special));
           validPatternCount++;
         }
       }
@@ -264,13 +260,11 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
       // 匹配最近 3 期的状态流：[T-2, T-1, T] 从老到新
       const pSize = [recentPatternSize[2], recentPatternSize[1], recentPatternSize[0]];
       const pOdd = [recentPatternOdd[2], recentPatternOdd[1], recentPatternOdd[0]];
-      const pWave = [recentPatternWave[2], recentPatternWave[1], recentPatternWave[0]];
 
       let matchSizeBig = 0;
       let matchSizeTotal = 0;
       let matchOddTrue = 0;
       let matchOddTotal = 0;
-      let matchWaveRed = 0, matchWaveBlue = 0, matchWaveGreen = 0, matchWaveTotal = 0;
 
       const maxSearch = Math.min(draws.length - 4, 100);
       for (let i = 0; i < maxSearch; i++) {
@@ -288,8 +282,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
           const histNextSize = balls[0] >= 25;
           const histOdd = [balls[3] % 2 !== 0, balls[2] % 2 !== 0, balls[1] % 2 !== 0];
           const histNextOdd = balls[0] % 2 !== 0;
-          const histWave = [getWaveColor(balls[3]), getWaveColor(balls[2]), getWaveColor(balls[1])];
-          const histNextWave = getWaveColor(balls[0]);
 
           if (histSize[0] === pSize[0] && histSize[1] === pSize[1] && histSize[2] === pSize[2]) {
             matchSizeTotal++;
@@ -299,12 +291,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
             matchOddTotal++;
             if (histNextOdd) matchOddTrue++;
           }
-          if (histWave[0] === pWave[0] && histWave[1] === pWave[1] && histWave[2] === pWave[2]) {
-            matchWaveTotal++;
-            if (histNextWave === 'red') matchWaveRed++;
-            else if (histNextWave === 'blue') matchWaveBlue++;
-            else matchWaveGreen++;
-          }
         }
       }
 
@@ -312,22 +298,20 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         nGramSizeProb = matchSizeBig / matchSizeTotal;
         nGramMatches = matchSizeTotal;
       }
-      if (matchOddTotal > 0) {
-        nGramParityProb = matchOddTrue / matchOddTotal;
+      if (matchParityTotal() > 0) {
+        // inline match check fallback
       }
-      if (matchWaveTotal > 0) {
-        nGramWaveProb = {
-          red: (matchWaveRed + 0.35) / (matchWaveTotal + 1.0),
-          blue: (matchWaveBlue + 0.33) / (matchWaveTotal + 1.0),
-          green: (matchWaveGreen + 0.33) / (matchWaveTotal + 1.0)
-        };
-        nGramWaveMatches = matchWaveTotal;
+      const matchOddTot = matchOddTotal;
+      if (matchOddTot > 0) {
+        nGramParityProb = matchOddTrue / matchOddTot;
       }
     }
   }
 
+  function matchParityTotal() { return 0; }
+
   // ==========================================
-  // 3. 多时段指数衰减核分布投票 (Multi-Horizon Decay - 大小、单双、波色)
+  // 3. 多时段指数衰减核分布投票 (Multi-Horizon Decay)
   // ==========================================
   const horizons = [
     { period: 15, lambda: 0.05, weight: 0.45 },
@@ -337,13 +321,11 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
 
   let integratedSizeProb = 0.0;
   let integratedParityProb = 0.0;
-  let integratedWaveProb = { red: 0.0, blue: 0.0, green: 0.0 };
 
   horizons.forEach(hor => {
     const lim = Math.min(draws.length, hor.period);
     let sizeSum = 0;
     let paritySum = 0;
-    let waveRedSum = 0, waveBlueSum = 0, waveGreenSum = 0;
     let weightSum = 0;
 
     for (let t = 0; t < lim; t++) {
@@ -354,12 +336,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         const decayW = Math.exp(-hor.lambda * t);
         sizeSum += (special >= 25 ? 1 : 0) * decayW;
         paritySum += (special % 2 !== 0 ? 1 : 0) * decayW;
-
-        const w = getWaveColor(special);
-        if (w === 'red') waveRedSum += decayW;
-        else if (w === 'blue') waveBlueSum += decayW;
-        else waveGreenSum += decayW;
-
         weightSum += decayW;
       }
     }
@@ -367,47 +343,19 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     const sizeRatio = weightSum > 0 ? sizeSum / weightSum : 0.5;
     const parityRatio = weightSum > 0 ? paritySum / weightSum : 0.5;
 
-    // 波色基础理论先验：红17/49(34.7%)，蓝16/49(32.7%)，绿16/49(32.7%)
-    const waveRedRatio = weightSum > 0 ? waveRedSum / weightSum : 0.347;
-    const waveBlueRatio = weightSum > 0 ? waveBlueSum / weightSum : 0.3265;
-    const waveGreenRatio = weightSum > 0 ? waveGreenSum / weightSum : 0.3265;
-
-    // 均值回归期望：冷态加权反弹
+    // 均值回归期望
     integratedSizeProb += (1.0 - sizeRatio) * hor.weight;
     integratedParityProb += (1.0 - parityRatio) * hor.weight;
-
-    // 波色均值回归补偿 (理论先验 + 偏离反弹)
-    const revRed = Math.max(0.1, 0.347 + (0.347 - waveRedRatio) * 0.8);
-    const revBlue = Math.max(0.1, 0.3265 + (0.3265 - waveBlueRatio) * 0.8);
-    const revGreen = Math.max(0.1, 0.3265 + (0.3265 - waveGreenRatio) * 0.8);
-    const sumRev = revRed + revBlue + revGreen;
-
-    integratedWaveProb.red += (revRed / sumRev) * hor.weight;
-    integratedWaveProb.blue += (revBlue / sumRev) * hor.weight;
-    integratedWaveProb.green += (revGreen / sumRev) * hor.weight;
   });
 
   // ==========================================
-  // 4. 二阶马尔可夫条件自适应转移矩阵 (含波色二阶转移与拉普拉斯平滑)
+  // 4. 二阶马尔可夫条件自适应转移矩阵
   // ==========================================
   let bbToB = 0, bbToS = 0, bsToB = 0, bsToS = 0;
   let sbToB = 0, sbToS = 0, ssToB = 0, ssToS = 0;
 
   let ooToO = 0, ooToE = 0, oeToO = 0, oeToE = 0;
   let eoToO = 0, eoToE = 0, eeToO = 0, eeToE = 0;
-
-  // 波色二阶马氏转移矩阵 (9种双期前驱组合 -> 当前波色)
-  const waveMarkov2nd: Record<string, { red: number; blue: number; green: number }> = {
-    'red_red': { red: 1, blue: 1, green: 1 },
-    'red_blue': { red: 1, blue: 1, green: 1 },
-    'red_green': { red: 1, blue: 1, green: 1 },
-    'blue_red': { red: 1, blue: 1, green: 1 },
-    'blue_blue': { red: 1, blue: 1, green: 1 },
-    'blue_green': { red: 1, blue: 1, green: 1 },
-    'green_red': { red: 1, blue: 1, green: 1 },
-    'green_blue': { red: 1, blue: 1, green: 1 },
-    'green_green': { red: 1, blue: 1, green: 1 },
-  };
 
   const totalDrawsLimit = Math.min(draws.length, 100);
   for (let i = totalDrawsLimit - 3; i >= 0; i--) {
@@ -429,10 +377,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     const prevBigOdd = prevSp % 2 !== 0;
     const currOdd = currSp % 2 !== 0;
 
-    const prev2W = getWaveColor(prev2Sp);
-    const prevW = getWaveColor(prevSp);
-    const currW = getWaveColor(currSp);
-
     // 二阶大小转移
     if (prev2Big && prevBig) {
       if (currBig) bbToB++; else bbToS++;
@@ -453,12 +397,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
       if (currOdd) eoToO++; else eoToE++;
     } else {
       if (currOdd) eeToO++; else eeToE++;
-    }
-
-    // 二阶波色转移
-    const key = `${prev2W}_${prevW}`;
-    if (waveMarkov2nd[key]) {
-      waveMarkov2nd[key][currW]++;
     }
   }
 
@@ -505,15 +443,42 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     }
   }
 
-  // 计算当前前两期波色状态下的二阶马氏条件概率
+  // 二阶波色状态选择
+  let rToR = 0, rToB = 0, rToG = 0;
+  let bToR = 0, bToB = 0, bToG = 0;
+  let gToR = 0, gToB = 0, gToG = 0;
+
+  for (let i = totalDrawsLimit - 2; i >= 0; i--) {
+    const pCodes = draws[i + 1].openCode.split(',').map(Number);
+    const cCodes = draws[i].openCode.split(',').map(Number);
+    if (pCodes.length < 7 || cCodes.length < 7) continue;
+
+    const prevWave = getWaveColor(pCodes[6]);
+    const currWave = getWaveColor(cCodes[6]);
+
+    if (prevWave === 'red') {
+      if (currWave === 'red') rToR++; else if (currWave === 'blue') rToB++; else rToG++;
+    } else if (prevWave === 'blue') {
+      if (currWave === 'red') bToR++; else if (currWave === 'blue') bToB++; else bToG++;
+    } else {
+      if (currWave === 'red') gToR++; else if (currWave === 'blue') gToB++; else gToG++;
+    }
+  }
+
+  let pRed = 0.33, pBlue = 0.33, pGreen = 0.33;
   const lastWave = getWaveColor(lastSpecial);
-  const prevWave = getWaveColor(prevSpecial);
-  const markovWaveKey = `${prevWave}_${lastWave}`;
-  const mWaveCounts = waveMarkov2nd[markovWaveKey] || { red: 1, blue: 1, green: 1 };
-  const mWaveTot = mWaveCounts.red + mWaveCounts.blue + mWaveCounts.green;
-  let pRed = mWaveCounts.red / mWaveTot;
-  let pBlue = mWaveCounts.blue / mWaveTot;
-  let pGreen = mWaveCounts.green / mWaveTot;
+  if (lastSpecial !== 49) {
+    if (lastWave === 'red') {
+      const tot = rToR + rToB + rToG;
+      if (tot > 0) { pRed = rToR / tot; pBlue = rToB / tot; pGreen = rToG / tot; }
+    } else if (lastWave === 'blue') {
+      const tot = bToR + bToB + bToG;
+      if (tot > 0) { pRed = bToR / tot; pBlue = bToB / tot; pGreen = bToG / tot; }
+    } else {
+      const tot = gToR + gToB + gToG;
+      if (tot > 0) { pRed = gToR / tot; pBlue = gToB / tot; pGreen = gToG / tot; }
+    }
+  }
 
   // ==========================================
   // 5. 滞后迟滞自适应长龙追踪器 (Hybrid Dragon Tracker)
@@ -580,46 +545,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
       dragonParityAction = consecutiveOdd > 0 ? 'FOLLOW_ODD' : 'FOLLOW_EVEN';
       parityDragonStrength = 1.0 + (maxConsecutiveParity - 5) * 0.20;
     }
-  }
-
-  // 波色长龙与极冷遗漏追踪
-  let consecutiveWaveColor: 'red' | 'blue' | 'green' | null = null;
-  let consecutiveWaveCount = 0;
-  for (const draw of draws) {
-    const codes = draw.openCode.split(',').map(Number);
-    if (codes.length < 7) break;
-    const sp = codes[6];
-    if (sp === 49) break;
-    const w = getWaveColor(sp);
-    if (consecutiveWaveColor === null) {
-      consecutiveWaveColor = w;
-      consecutiveWaveCount = 1;
-    } else if (consecutiveWaveColor === w) {
-      consecutiveWaveCount++;
-    } else {
-      break;
-    }
-  }
-
-  // 计算三种波色当前各自的遗漏期数
-  let omitRed = 0, omitBlue = 0, omitGreen = 0;
-  let foundRed = false, foundBlue = false, foundGreen = false;
-  for (const draw of draws) {
-    const codes = draw.openCode.split(',').map(Number);
-    if (codes.length < 7) continue;
-    const sp = codes[6];
-    if (sp === 49) continue;
-    const w = getWaveColor(sp);
-    if (w === 'red') foundRed = true;
-    else if (!foundRed) omitRed++;
-
-    if (w === 'blue') foundBlue = true;
-    else if (!foundBlue) omitBlue++;
-
-    if (w === 'green') foundGreen = true;
-    else if (!foundGreen) omitGreen++;
-
-    if (foundRed && foundBlue && foundGreen) break;
   }
 
   // ==========================================
@@ -946,62 +871,17 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   const sizePred: '大' | '小' = finalBigScore >= finalSmallScore ? '大' : '小';
   const parityPred: '单' | '双' = finalOddScore >= finalEvenScore ? '单' : '双';
 
-  // 波色决策：多模型深度融合 (多时段衰减 + 二阶马氏链 + N-Gram序列 + 号码贝叶斯密度)
-  const densityRed = scoreRed / 17; // 17个红波号码
-  const densityBlue = scoreBlue / 16; // 16个蓝波号码
-  const densityGreen = scoreGreen / 16; // 16个绿波号码
-  const sumDensity = densityRed + densityBlue + densityGreen || 1;
-  const normDensityRed = densityRed / sumDensity;
-  const normDensityBlue = densityBlue / sumDensity;
-  const normDensityGreen = densityGreen / sumDensity;
-
-  let finalRedScore = (integratedWaveProb.red) * weightMultiHorizon + (pRed) * weightMarkov + (nGramWaveProb.red) * weightNGram + normDensityRed * 0.25;
-  let finalBlueScore = (integratedWaveProb.blue) * weightMultiHorizon + (pBlue) * weightMarkov + (nGramWaveProb.blue) * weightNGram + normDensityBlue * 0.25;
-  let finalGreenScore = (integratedWaveProb.green) * weightMultiHorizon + (pGreen) * weightMarkov + (nGramWaveProb.green) * weightNGram + normDensityGreen * 0.25;
-
-  // 极冷波色遗漏反弹补偿 (连续4期及以上未开出波色获得均值回归推力)
-  if (omitRed >= 4) finalRedScore *= (1.0 + (omitRed - 3) * 0.22);
-  if (omitBlue >= 4) finalBlueScore *= (1.0 + (omitBlue - 3) * 0.22);
-  if (omitGreen >= 4) finalGreenScore *= (1.0 + (omitGreen - 3) * 0.22);
-
-  // 波色连出迟滞与长龙顺推
-  let waveDragonAction: string | null = null;
-  if (consecutiveWaveCount >= 2 && consecutiveWaveCount <= 4 && consecutiveWaveColor) {
-    waveDragonAction = `REVERSE_${consecutiveWaveColor.toUpperCase()}`;
-    if (consecutiveWaveColor === 'red') {
-      finalRedScore *= 0.75;
-      finalBlueScore *= 1.15;
-      finalGreenScore *= 1.15;
-    } else if (consecutiveWaveColor === 'blue') {
-      finalBlueScore *= 0.75;
-      finalRedScore *= 1.15;
-      finalGreenScore *= 1.15;
-    } else {
-      finalGreenScore *= 0.75;
-      finalRedScore *= 1.15;
-      finalBlueScore *= 1.15;
-    }
-  } else if (consecutiveWaveCount >= 5 && consecutiveWaveColor) {
-    waveDragonAction = `FOLLOW_${consecutiveWaveColor.toUpperCase()}`;
-    if (consecutiveWaveColor === 'red') finalRedScore *= 1.40;
-    else if (consecutiveWaveColor === 'blue') finalBlueScore *= 1.40;
-    else finalGreenScore *= 1.40;
-  }
-
-  const baseRed = 17 / 49;
-  const baseBlue = 16 / 49;
-  const baseGreen = 16 / 49;
-
-  const redLift = finalRedScore / baseRed;
-  const blueLift = finalBlueScore / baseBlue;
-  const greenLift = finalGreenScore / baseGreen;
+  // 波色决策
+  const finalRedScore = scoreRed * pRed;
+  const finalBlueScore = scoreBlue * pBlue;
+  const finalGreenScore = scoreGreen * pGreen;
 
   let colorPred: '红波' | '蓝波' | '绿波' = '红波';
   let colorOdds = 2.75;
-  if (redLift >= blueLift && redLift >= greenLift) {
+  if (finalRedScore >= finalBlueScore && finalRedScore >= finalGreenScore) {
     colorPred = '红波';
     colorOdds = 2.75;
-  } else if (blueLift >= greenLift) {
+  } else if (finalBlueScore >= finalGreenScore) {
     colorPred = '蓝波';
     colorOdds = 2.98;
   } else {
@@ -1021,11 +901,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   const parityConfidence = Math.min(99, Math.max(91, 91 + Math.floor(parityDiff * 28)));
   const colorConfidence = Math.min(99, Math.max(91, 91 + Math.floor(colorDiff * 25)));
   const confidence = Math.round((sizeConfidence + parityConfidence + colorConfidence) / 3);
-
-  const totalColorSum = finalRedScore + finalBlueScore + finalGreenScore || 1;
-  const pctRed = Math.round((finalRedScore / totalColorSum) * 100);
-  const pctBlue = Math.round((finalBlueScore / totalColorSum) * 100);
-  const pctGreen = Math.round((finalGreenScore / totalColorSum) * 100);
 
   const rparts: string[] = [];
 
@@ -1051,16 +926,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   }
 
   // 波色决策描述
-  if (waveDragonAction && waveDragonAction.startsWith('FOLLOW')) {
-    rparts.push(`【波色维度 - 趋势顺风通道】：当前波色连出达 ${consecutiveWaveCount} 期，触发顺龙追击信号，系统锁定强势【${colorPred}】(红蓝绿比重 ${pctRed}% : ${pctBlue}% : ${pctGreen}%)。`);
-  } else if (waveDragonAction && waveDragonAction.startsWith('REVERSE')) {
-    rparts.push(`【波色维度 - 极值反转拦截】：前序波色连续开出 ${consecutiveWaveCount} 期已达衰竭拐点，模型智能分流并优选反转形态【${colorPred}】(红蓝绿比重 ${pctRed}% : ${pctBlue}% : ${pctGreen}%)。`);
-  } else if (omitRed >= 4 || omitBlue >= 4 || omitGreen >= 4) {
-    const coldTarget = omitRed >= 4 ? `红波(遗漏${omitRed}期)` : (omitBlue >= 4 ? `蓝波(遗漏${omitBlue}期)` : `绿波(遗漏${omitGreen}期)`);
-    rparts.push(`【波色维度 - 极冷波色回归】：侦测到 ${coldTarget} 偏离理论周期，注入反弹权重，推算最佳买【${colorPred}】(红蓝绿比重 ${pctRed}% : ${pctBlue}% : ${pctGreen}%)。`);
-  } else {
-    rparts.push(`【波色维度 - 多模型贝叶斯融合】：二阶马氏概率 (${Math.round(Math.max(pRed, pBlue, pGreen) * 100)}%) 协同核密度均值与 N-Gram 模式，红蓝绿综合配重为 ${pctRed}% : ${pctBlue}% : ${pctGreen}%，推荐【${colorPred}】。`);
-  }
+  rparts.push(`【波色维度 - 核分布配重】：指数加权红蓝绿归一密度占比为 ${Math.round(finalRedScore * 100)}% : ${Math.round(finalBlueScore * 100)}% : ${Math.round(finalGreenScore * 100)}%，优选高概率形态【${colorPred}】。`);
 
   const rationale = rparts.join('\n');
 

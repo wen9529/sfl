@@ -8,9 +8,8 @@ export interface MacauDrawItem {
 }
 
 export function getWaveColor(num: number): 'red' | 'blue' | 'green' {
-  // 六合彩标准49码波色：红波17码、蓝波16码、绿波16码
-  const reds = [1, 2, 7, 8, 12, 13, 18, 19, 23, 24, 29, 30, 34, 35, 40, 45, 46];
-  const blues = [3, 4, 9, 10, 14, 15, 20, 25, 26, 31, 36, 37, 41, 42, 47, 48];
+  const reds = [1, 2, 7, 8, 9, 12, 13, 18, 19, 23, 24, 28, 29, 30, 34, 35, 37, 40, 41, 45, 48];
+  const blues = [3, 4, 10, 14, 15, 20, 25, 26, 31, 36, 42];
   if (reds.includes(num)) return 'red';
   if (blues.includes(num)) return 'blue';
   return 'green';

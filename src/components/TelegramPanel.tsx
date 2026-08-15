@@ -68,10 +68,6 @@ export const TelegramPanel: React.FC = () => {
   const [webhookResult, setWebhookResult] = useState<{
     success: boolean;
     message: string;
-    directManualBindUrl?: string;
-    checkWebhookInfoUrl?: string;
-    attemptedWebhookUrl?: string;
-    solution?: string[];
   } | null>(null);
 
   // Fetch status and logs
@@ -163,10 +159,6 @@ export const TelegramPanel: React.FC = () => {
         setWebhookResult({
           success: false,
           message: data.error || 'Webhook 绑定失败',
-          directManualBindUrl: data.directManualBindUrl,
-          checkWebhookInfoUrl: data.checkWebhookInfoUrl,
-          attemptedWebhookUrl: data.attemptedWebhookUrl || targetUrl,
-          solution: data.solution,
         });
       }
     } catch (err: any) {
@@ -426,61 +418,9 @@ export const TelegramPanel: React.FC = () => {
         </div>
 
         {webhookResult && (
-          <div className={`p-4 rounded-xl border text-xs space-y-3 ${webhookResult.success ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300' : 'bg-red-950/30 border-red-500/30 text-red-300'}`}>
-            <div className="flex items-start gap-2">
-              {webhookResult.success ? <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />}
-              <div className="flex-1 space-y-1">
-                <span className="font-semibold">{webhookResult.message}</span>
-                {webhookResult.attemptedWebhookUrl && (
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    尝试绑定的回调地址：{webhookResult.attemptedWebhookUrl}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {!webhookResult.success && webhookResult.directManualBindUrl && (
-              <div className="mt-2 pt-2 border-t border-red-500/20 space-y-2">
-                <div className="flex items-center gap-2">
-                  <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="font-semibold text-slate-200 text-xs">🚀 备用方案：浏览器直接绑定 (无需经过服务器)</span>
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  如果服务器因网络策略无法直接连接 Telegram API，点击下方按钮将在新窗口通过浏览器直连 Telegram 完成绑定：
-                </p>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <a
-                    href={webhookResult.directManualBindUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-[11px] font-medium inline-flex items-center gap-1 transition-all"
-                  >
-                    🔗 在新标签页中一键直连绑定 Webhook
-                  </a>
-                  {webhookResult.checkWebhookInfoUrl && (
-                    <a
-                      href={webhookResult.checkWebhookInfoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-medium inline-flex items-center gap-1 border border-slate-700 transition-all"
-                    >
-                      🔍 检查当前 Webhook 状态
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!webhookResult.success && webhookResult.solution && (
-              <div className="mt-2 pt-2 border-t border-red-500/20 text-[11px] text-slate-400 space-y-1">
-                <span className="text-slate-300 font-medium block">排查建议：</span>
-                <ul className="list-disc list-inside space-y-0.5 pl-1">
-                  {webhookResult.solution.map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${webhookResult.success ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300' : 'bg-red-950/30 border-red-500/30 text-red-300'}`}>
+            {webhookResult.success ? <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" /> : <XCircle className="w-4 h-4 text-red-400 shrink-0" />}
+            <span>{webhookResult.message}</span>
           </div>
         )}
       </div>

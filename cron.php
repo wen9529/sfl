@@ -16,15 +16,6 @@ $config = require __DIR__ . '/config.php';
 $token = $config['telegram_bot_token'];
 $chatId = $config['telegram_chat_id'];
 
-// 优先从已绑定的群聊配置中读取 chat_id
-$bindFile = __DIR__ . '/telegram_bind_chat.json';
-if (file_exists($bindFile)) {
-    $bindData = json_decode(file_get_contents($bindFile), true);
-    if (!empty($bindData['chat_id'])) {
-        $chatId = $bindData['chat_id'];
-    }
-}
-
 if (!$token || !$chatId) {
     echo "未配置 Telegram Token 或 Chat ID，定时开奖播报跳过。\n";
     exit;
@@ -53,15 +44,27 @@ if (!$isForce && $latestIssue === $lastPushedIssue) {
 // 生成复合推演帖子
 $msgText = generateAutomatedPushReportPHP($draws);
 
-$resData = sendTgRequestPHP($token, 'sendMessage', [
+$url = "https://api.telegram.org/bot{$token}/sendMessage";
+$ch = curl_init();
+curl_setopt($ch, CURLOPT_URL, $url);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
     'chat_id' => $chatId,
     'text' => $msgText,
     'parse_mode' => 'HTML',
     'disable_web_page_preview' => true
-]);
+]));
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
-$isSuccess = ($resData['ok'] ?? false) === true;
-$httpCode = $resData['http_code'] ?? 0;
+$res = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+$resData = json_decode($res, true);
+$isSuccess = ($httpCode === 200 && isset($resData['ok']) && $resData['ok'] === true);
 
 if ($isSuccess) {
     // 只有推送成功时，才更新 last_pushed_issue.txt，防止因临时网络故障导致漏推

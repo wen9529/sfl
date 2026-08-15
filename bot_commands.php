@@ -22,7 +22,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         if (!empty($update['callback_query'])) {
             $isCallback = true;
             $cb = $update['callback_query'];
-            $callbackQueryId = $cb['id'] ?? null;
+            $callbackQueryId = $cb['id'];
             $chatId = $cb['message']['chat']['id'] ?? null;
             $messageId = $cb['message']['message_id'] ?? null;
             $text = trim($cb['data'] ?? '');
@@ -40,6 +40,11 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 }
             }
             else if ($text === 'cmd_help') $text = '/help';
+
+            // 响应 callback 消除按钮加载动画
+            sendTgRequestPHP($token, 'answerCallbackQuery', [
+                'callback_query_id' => $callbackQueryId
+            ]);
         } else if (!empty($update['message'])) {
             $msg = $update['message'];
             $chatId = $msg['chat']['id'] ?? null;
@@ -52,92 +57,90 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             }
 
             // 映射键盘菜单点击文本
-            if (strpos($text, '最新开奖') !== false || strpos($text, '开奖') !== false) $text = '/draw';
-            else if (strpos($text, '智能预测') !== false || strpos($text, '预测') !== false || strpos($text, '推演') !== false) $text = '/predict';
-            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '统计') !== false) $text = '/stats';
-            else if (strpos($text, '历史记录') !== false || strpos($text, '历史') !== false) $text = '/history 1';
-            else if (strpos($text, '帮助') !== false || strpos($text, '说明') !== false) $text = '/help';
-            else if (strpos($text, '绑定') !== false || strpos($text, '推送') !== false) $text = '/bind';
+            if (strpos($text, '最新开奖') !== false) $text = '/draw';
+            else if (strpos($text, '智能预测') !== false) $text = '/predict';
+            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false) $text = '/stats';
+            else if (strpos($text, '历史记录') !== false) $text = '/history 1';
+            else if (strpos($text, '帮助') !== false) $text = '/help';
         }
 
         if (!$chatId) return;
 
-        // 通用 Reply Keyboard 底部常驻 6 宫格键盘菜单
+        // 通用 Reply Keyboard 菜单
         $replyKeyboard = [
             'keyboard' => [
-                [['text' => '🎰 最新开奖'], ['text' => '🧠 智能预测']],
-                [['text' => '📜 历史记录'], ['text' => '📊 盈亏统计']],
-                [['text' => '❓ 帮助说明'], ['text' => '⚙️ 绑定推送']]
+                [['text' => '🎰 最新开奖'], ['text' => '📜 历史记录']],
+                [['text' => '🧠 智能预测'], ['text' => '📊 盈亏统计']]
             ],
             'resize_keyboard' => true,
-            'is_persistent' => true
+            'one_time_keyboard' => false
         ];
 
-        // 统一发送/编辑辅助函数 (使用 Webhook Direct Response 机制，零网络延迟，避免服务器出站受阻)
-        $deliverMessage = function($msgText, $inlineButtons = [], $forceReplyKeyboard = false) use ($token, $chatId, $messageId, $userMessageId, $isCallback, $replyKeyboard, &$text) {
+        // 统一发送/编辑辅助函数 (新帖子覆盖旧帖子，避免刷屏)
+        $deliverMessage = function($msgText, $inlineButtons) use ($token, $chatId, $messageId, $userMessageId, $isCallback, $replyKeyboard, &$text) {
             if ($isCallback && $messageId) {
-                $payload = [
-                    'method' => 'editMessageText',
+                // 编辑/覆盖旧帖子内容
+                $res = sendTgRequestPHP($token, 'editMessageText', [
                     'chat_id' => $chatId,
                     'message_id' => $messageId,
                     'text' => $msgText,
                     'parse_mode' => 'HTML',
-                    'reply_markup' => !empty($inlineButtons) ? ['inline_keyboard' => $inlineButtons] : null
-                ];
+                    'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                ]);
+
+                if (!($res['ok'] ?? false)) {
+                    sendTgRequestPHP($token, 'sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => $msgText,
+                        'parse_mode' => 'HTML',
+                        'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                    ]);
+                }
             } else {
-                $markup = $replyKeyboard;
-                if (!$forceReplyKeyboard && !empty($inlineButtons)) {
-                    $markup = ['inline_keyboard' => $inlineButtons];
+                // 这是用户发送的文本指令 (非回调)
+                // 1. 尝试删除用户的原始指令消息 (保持界面整洁)
+                if ($userMessageId) {
+                    sendTgRequestPHP($token, 'deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $userMessageId
+                    ]);
                 }
 
-                $payload = [
-                    'method' => 'sendMessage',
+                // 2. 尝试删除 Bot 之前发送的对应卡片 (确保屏幕只保留一个活动卡片)
+                $stateFile = __DIR__ . '/telegram_user_states.json';
+                $userStates = file_exists($stateFile) ? (json_decode(file_get_contents($stateFile), true) ?: []) : [];
+                
+                $lastMsgId = $userStates[$chatId]['last_bot_msg_id'] ?? null;
+                if ($lastMsgId) {
+                    sendTgRequestPHP($token, 'deleteMessage', [
+                        'chat_id' => $chatId,
+                        'message_id' => $lastMsgId
+                    ]);
+                }
+
+                // 发送新消息并携带内联按钮与底部键盘菜单
+                $res = sendTgRequestPHP($token, 'sendMessage', [
                     'chat_id' => $chatId,
                     'text' => $msgText,
                     'parse_mode' => 'HTML',
-                    'reply_markup' => $markup
-                ];
-            }
+                    'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                ]);
 
-            if (ob_get_level() > 0) {
-                ob_end_clean();
+                if (isset($res['result']['message_id'])) {
+                    $userStates[$chatId]['last_bot_msg_id'] = $res['result']['message_id'];
+                    file_put_contents($stateFile, json_encode($userStates, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
+                }
+
+                // 仅在 /start 或 /help 时才发送配置底部菜单的提示
+                if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
+                    sendTgRequestPHP($token, 'sendMessage', [
+                        'chat_id' => $chatId,
+                        'text' => '📱 底部常驻菜单已配置，可随时点击切换：',
+                        'reply_markup' => $replyKeyboard
+                    ]);
+                }
             }
-            if (!headers_sent()) {
-                http_response_code(200);
-                header('Content-Type: application/json; charset=utf-8');
-            }
-            echo json_encode($payload, JSON_UNESCAPED_UNICODE);
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
-            }
-            exit;
         };
-
-        // 0. /bind 指令 (绑定群组或当前私聊为定时推送目标)
-        if (strpos($text, '/bind') === 0) {
-            $bindFile = __DIR__ . '/telegram_bind_chat.json';
-            @file_put_contents($bindFile, json_encode([
-                'chat_id' => $chatId,
-                'bind_time' => date('Y-m-d H:i:s'),
-                'type' => $update['message']['chat']['type'] ?? 'private'
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-
-            $msgText = "<b>✅ 成功绑定当前会话为开奖推送目标！</b>\n"
-                     . "--------------------------------------\n"
-                     . "<b>会话 ID (Chat ID)</b>: <code>{$chatId}</code>\n"
-                     . "<b>绑定时间</b>: " . date('Y-m-d H:i:s') . "\n"
-                     . "--------------------------------------\n"
-                     . "系统开奖结算或运行推送任务时，将优先广播至此 ID。";
-
-            $inlineButtons = [
-                [['text' => '🎰 查看最新开奖', 'callback_data' => 'cmd_draw']],
-                [['text' => '🧠 智能预测', 'callback_data' => 'cmd_predict']]
-            ];
-
-            $deliverMessage($msgText, $inlineButtons);
-            writeLogPHP('Webhook指令', 'success', "响应 /bind 绑定成功 {$chatId}");
-            return;
-        }
 
         // 1. /start 或 /help 指令
         if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
@@ -155,8 +158,8 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 [['text' => '🔄 刷新使用说明', 'callback_data' => 'cmd_help']]
             ];
 
-            $deliverMessage($msgText, [], true);
-            writeLogPHP('Webhook指令', 'success', "响应 /start|/help 并激活底部键盘菜单给 {$chatId}");
+            $deliverMessage($msgText, $inlineButtons);
+            writeLogPHP('Webhook指令', 'success', "响应 /help 给 {$chatId}");
             return;
         }
 

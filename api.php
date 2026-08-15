@@ -162,7 +162,7 @@ if ($action === 'test_push') {
 
 // 路由 6: 绑定 Webhook API
 if ($action === 'set_webhook') {
-    $token = !empty($_REQUEST['botToken']) ? $_REQUEST['botToken'] : (!empty($_REQUEST['bot_token']) ? $_REQUEST['bot_token'] : ($config['telegram_bot_token'] ?? ''));
+    $token = !empty($_REQUEST['botToken']) ? $_REQUEST['botToken'] : ($config['telegram_bot_token'] ?? '');
     
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "https";
     $host = $_SERVER['HTTP_HOST'] ?? 'wenge9529.serv00.net';
@@ -172,37 +172,18 @@ if ($action === 'set_webhook') {
     $webhookUrl = !empty($_REQUEST['webhookUrl']) ? $_REQUEST['webhookUrl'] : $defaultWebhookUrl;
 
     if (!$token) {
-        echo json_encode(['success' => false, 'error' => '缺少 Bot Token！请检查 config.php 或传入参数', 'attemptedWebhookUrl' => $webhookUrl], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['success' => false, 'error' => '缺少 Bot Token！请检查 config.php 或传入参数'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $res = sendTgRequestPHP($token, 'setWebhook', [
-        'url' => $webhookUrl,
-        'drop_pending_updates' => true
-    ]);
+    $res = sendTgRequestPHP($token, 'setWebhook', ['url' => $webhookUrl]);
     if ($res['ok'] ?? false) {
         writeLogPHP('Webhook', 'success', "已成功绑定 Webhook: {$webhookUrl}");
         echo json_encode(['success' => true, 'message' => 'Webhook 绑定成功！', 'webhookUrl' => $webhookUrl, 'result' => $res], JSON_UNESCAPED_UNICODE);
     } else {
         $err = $res['description'] ?? '绑定失败';
-        $httpCode = $res['http_code'] ?? 0;
-        $directSetUrl = "https://api.telegram.org/bot{$token}/setWebhook?url=" . urlencode($webhookUrl) . "&drop_pending_updates=true";
-        $directInfoUrl = "https://api.telegram.org/bot{$token}/getWebhookInfo";
-
-        writeLogPHP('Webhook', 'error', "Webhook 绑定失败: {$err}", "HTTP: {$httpCode} | URL: {$webhookUrl}");
-        echo json_encode([
-            'success' => false,
-            'error' => $err,
-            'http_code' => $httpCode,
-            'attemptedWebhookUrl' => $webhookUrl,
-            'directManualBindUrl' => $directSetUrl,
-            'checkWebhookInfoUrl' => $directInfoUrl,
-            'solution' => [
-                '1. 检查 Bot Token 是否填写正确（在 config.php 中配置 telegram_bot_token）',
-                '2. 直接在浏览器打开 directManualBindUrl 即可一键直连 Telegram 绑定'
-            ],
-            'result' => $res
-        ], JSON_UNESCAPED_UNICODE);
+        writeLogPHP('Webhook', 'error', "Webhook 绑定失败", $err);
+        echo json_encode(['success' => false, 'error' => $err, 'attemptedWebhookUrl' => $webhookUrl, 'result' => $res], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }
