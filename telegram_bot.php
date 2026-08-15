@@ -3,15 +3,26 @@
  * 澳门三分六合彩 · Telegram Bot Webhook 主入口 (模块化架构)
  */
 
+error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
+ini_set('display_errors', 0);
 date_default_timezone_set('Asia/Shanghai');
-header('Content-Type: application/json; charset=utf-8');
+
+// 开启输出缓冲，确保无意外字符污染 JSON
+ob_start();
 
 // 引入模块
-$config = require __DIR__ . '/config.php';
-require_once __DIR__ . '/utils.php';
-require_once __DIR__ . '/lottery_engine.php';
-require_once __DIR__ . '/stats_algorithm.php';
-require_once __DIR__ . '/bot_commands.php';
+try {
+    $config = require __DIR__ . '/config.php';
+    require_once __DIR__ . '/utils.php';
+    require_once __DIR__ . '/lottery_engine.php';
+    require_once __DIR__ . '/stats_algorithm.php';
+    require_once __DIR__ . '/bot_commands.php';
+} catch (\Throwable $e) {
+    ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => true, 'init_error' => $e->getMessage()]);
+    exit;
+}
 
 // 提取 POST / GET / JSON 请求参数
 $inputRaw = file_get_contents('php://input');
@@ -24,18 +35,27 @@ $action = isset($requestParams['action']) ? $requestParams['action'] : '';
 if (empty($action) && (!empty($jsonParams['message']) || !empty($jsonParams['callback_query']))) {
     $token = !empty($config['telegram_bot_token']) ? $config['telegram_bot_token'] : '8902856799:AAHTYxIWSpohEBtQkn9Ii4DJcIjo6uIfgbg';
 
-    // 记录收到 Webhook 的日志
-    $sender = $jsonParams['message']['from']['username'] ?? $jsonParams['message']['from']['id'] ?? ($jsonParams['callback_query']['from']['id'] ?? 'unknown');
-    $cmdText = $jsonParams['message']['text'] ?? ($jsonParams['callback_query']['data'] ?? '');
-    writeLogPHP('Webhook收到请求', 'info', "收到来自 {$sender} 的请求: {$cmdText}");
+    try {
+        // 记录收到 Webhook 的日志
+        $sender = $jsonParams['message']['from']['username'] ?? $jsonParams['message']['from']['id'] ?? ($jsonParams['callback_query']['from']['id'] ?? 'unknown');
+        $cmdText = $jsonParams['message']['text'] ?? ($jsonParams['callback_query']['data'] ?? '');
+        writeLogPHP('Webhook收到请求', 'info', "收到来自 {$sender} 的请求: {$cmdText}");
 
-    // 同步调用 Bot 指令与按钮处理模块，完成 Telegram Webhook Direct Response 响应
-    handleTelegramBotCommandPHP($jsonParams, $token);
+        // 同步调用 Bot 指令与按钮处理模块，完成 Telegram Webhook Direct Response 响应
+        handleTelegramBotCommandPHP($jsonParams, $token);
+    } catch (\Throwable $e) {
+        writeLogPHP('Webhook执行异常', 'error', $e->getMessage(), $e->getTraceAsString());
+    }
 
+    ob_end_clean();
+    header('Content-Type: application/json; charset=utf-8');
     http_response_code(200);
     echo json_encode(['ok' => true]);
     exit;
 }
+
+ob_end_clean();
+header('Content-Type: application/json; charset=utf-8');
 
 // 2. 发送广播消息 API
 if ($action === 'send') {
