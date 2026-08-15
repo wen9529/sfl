@@ -24,6 +24,11 @@ $action = isset($requestParams['action']) ? $requestParams['action'] : '';
 if (empty($action) && (!empty($jsonParams['message']) || !empty($jsonParams['callback_query']))) {
     $token = !empty($config['telegram_bot_token']) ? $config['telegram_bot_token'] : '8902856799:AAHTYxIWSpohEBtQkn9Ii4DJcIjo6uIfgbg';
 
+    // 记录收到 Webhook 的日志
+    $sender = $jsonParams['message']['from']['username'] ?? $jsonParams['message']['from']['id'] ?? ($jsonParams['callback_query']['from']['id'] ?? 'unknown');
+    $cmdText = $jsonParams['message']['text'] ?? ($jsonParams['callback_query']['data'] ?? '');
+    writeLogPHP('Webhook收到请求', 'info', "收到来自 {$sender} 的请求: {$cmdText}");
+
     // 同步调用 Bot 指令与按钮处理模块，完成 Telegram Webhook Direct Response 响应
     handleTelegramBotCommandPHP($jsonParams, $token);
 

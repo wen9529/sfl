@@ -22,7 +22,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         if (!empty($update['callback_query'])) {
             $isCallback = true;
             $cb = $update['callback_query'];
-            $callbackQueryId = $cb['id'];
+            $callbackQueryId = $cb['id'] ?? null;
             $chatId = $cb['message']['chat']['id'] ?? null;
             $messageId = $cb['message']['message_id'] ?? null;
             $text = trim($cb['data'] ?? '');
@@ -40,11 +40,6 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 }
             }
             else if ($text === 'cmd_help') $text = '/help';
-
-            // 响应 callback 消除按钮加载动画
-            sendTgRequestPHP($token, 'answerCallbackQuery', [
-                'callback_query_id' => $callbackQueryId
-            ]);
         } else if (!empty($update['message'])) {
             $msg = $update['message'];
             $chatId = $msg['chat']['id'] ?? null;

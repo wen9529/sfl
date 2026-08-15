@@ -110,14 +110,16 @@ if (!function_exists('getLatestDrawsPHP')) {
         }
         
         if ($draws === null) {
-            // 尝试从远程抓取 50 期数据
+            // 尝试从远程抓取 50 期数据 (设置 2 秒快速超时，避免拖慢 Telegram 响应)
             $draws = [];
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, "https://history.macaumarksix.com/history/macaujc3");
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['page' => 1, 'pageSize' => 480]));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
             curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
             curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
