@@ -73,7 +73,8 @@ if (!function_exists('writeLogPHP')) {
 if (!function_exists('sendTgRequestPHP')) {
     // 发送 Telegram API 请求 (增强网络稳定性与详细错误捕捉)
     function sendTgRequestPHP($token, $method, $data) {
-        $url = "https://api.telegram.org/bot{$token}/{$method}";
+        $apiBase = rtrim($_ENV['TELEGRAM_API_BASE'] ?? getenv('TELEGRAM_API_BASE') ?: 'https://api.telegram.org', '/');
+        $url = "{$apiBase}/bot{$token}/{$method}";
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_POST, true);

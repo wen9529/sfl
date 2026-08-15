@@ -39,6 +39,7 @@ return [
     'telegram_bot_token' => $_ENV['TELEGRAM_BOT_TOKEN'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '',
     'telegram_chat_id'   => $_ENV['TELEGRAM_CHAT_ID'] ?? getenv('TELEGRAM_CHAT_ID') ?: '',
     'telegram_admin_id'  => $_ENV['TELEGRAM_ADMIN_ID'] ?? getenv('TELEGRAM_ADMIN_ID') ?: '',
+    'telegram_api_base'  => $_ENV['TELEGRAM_API_BASE'] ?? getenv('TELEGRAM_API_BASE') ?: 'https://api.telegram.org',
     
     // Gemini API Key
     'gemini_api_key'     => $_ENV['GEMINI_API_KEY'] ?? getenv('GEMINI_API_KEY') ?: '',
