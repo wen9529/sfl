@@ -71,7 +71,7 @@ if (!function_exists('writeLogPHP')) {
 }
 
 if (!function_exists('sendTgRequestPHP')) {
-    // 发送 Telegram API 请求
+    // 发送 Telegram API 请求 (增强网络稳定性与详细错误捕捉)
     function sendTgRequestPHP($token, $method, $data) {
         $url = "https://api.telegram.org/bot{$token}/{$method}";
         $ch = curl_init();
@@ -80,11 +80,35 @@ if (!function_exists('sendTgRequestPHP')) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        // 关键：强制使用 IPv4 解析，避免 Serv00 等主机 IPv6 路由超时
+        if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        }
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'MacauLotteryBot/1.0');
+        
         $result = curl_exec($ch);
+        $curlErr = curl_error($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
-        return json_decode($result, true) ?: [];
+
+        $decoded = json_decode($result, true);
+        if (is_array($decoded)) {
+            $decoded['http_code'] = $httpCode;
+            if ($curlErr) $decoded['curl_error'] = $curlErr;
+            return $decoded;
+        }
+
+        return [
+            'ok' => false,
+            'http_code' => $httpCode,
+            'description' => !empty($curlErr) ? "cURL网络错误: {$curlErr} (HTTP {$httpCode})" : "Telegram API 无响应 (HTTP {$httpCode})",
+            'curl_error' => $curlErr,
+            'raw' => $result
+        ];
     }
 }
 

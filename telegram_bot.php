@@ -70,7 +70,7 @@ if ($action === 'send') {
 
 // 3. 绑定 Webhook API
 if ($action === 'set_webhook') {
-    $token = !empty($requestParams['botToken']) ? $requestParams['botToken'] : $config['telegram_bot_token'];
+    $token = !empty($requestParams['botToken']) ? $requestParams['botToken'] : (!empty($requestParams['bot_token']) ? $requestParams['bot_token'] : ($config['telegram_bot_token'] ?? ''));
     
     // 自动判断并生成默认 Webhook URL
     $protocol = "https";
@@ -82,12 +82,17 @@ if ($action === 'set_webhook') {
 
     if (!$token) {
         echo json_encode([
-            'error' => '缺少 Bot Token！请先在 config.php 或 .env 中填写 TELEGRAM_BOT_TOKEN'
+            'success' => false,
+            'error' => '缺少 Bot Token！请先在 config.php 或 .env 中填写 TELEGRAM_BOT_TOKEN，或在请求参数中传入 botToken',
+            'attemptedWebhookUrl' => $webhookUrl
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $res = sendTgRequestPHP($token, 'setWebhook', ['url' => $webhookUrl]);
+    $res = sendTgRequestPHP($token, 'setWebhook', [
+        'url' => $webhookUrl,
+        'drop_pending_updates' => true
+    ]);
 
     if ($res['ok'] ?? false) {
         writeLogPHP('Webhook', 'success', "已成功绑定 Webhook: {$webhookUrl}");
@@ -99,10 +104,24 @@ if ($action === 'set_webhook') {
         ], JSON_UNESCAPED_UNICODE);
     } else {
         $err = $res['description'] ?? '绑定失败';
-        writeLogPHP('Webhook', 'error', "Webhook 绑定失败", $err);
+        $httpCode = $res['http_code'] ?? 0;
+        $directSetUrl = "https://api.telegram.org/bot{$token}/setWebhook?url=" . urlencode($webhookUrl) . "&drop_pending_updates=true";
+        $directInfoUrl = "https://api.telegram.org/bot{$token}/getWebhookInfo";
+        
+        writeLogPHP('Webhook', 'error', "Webhook 绑定失败: {$err}", "HTTP: {$httpCode} | URL: {$webhookUrl}");
         echo json_encode([
+            'success' => false,
             'error' => $err,
-            'attemptedWebhookUrl' => $webhookUrl
+            'http_code' => $httpCode,
+            'attemptedWebhookUrl' => $webhookUrl,
+            'directManualBindUrl' => $directSetUrl,
+            'checkWebhookInfoUrl' => $directInfoUrl,
+            'solution' => [
+                '1. 若提示 401 Unauthorized，说明 Bot Token 错误或已过期失效，请检查 config.php',
+                '2. 若由于服务器网络波动，可直接在电脑浏览器中访问上方 directManualBindUrl 链接一键直连绑定',
+                '3. Webhook 地址必须为公网可访问的 HTTPS 协议地址'
+            ],
+            'result' => $res
         ], JSON_UNESCAPED_UNICODE);
     }
     exit;
