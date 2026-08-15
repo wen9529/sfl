@@ -114,6 +114,19 @@ if ($action === 'set_webhook') {
         'drop_pending_updates' => true
     ]);
 
+    // 自动向 Telegram 注册菜单指令列表
+    sendTgRequestPHP($token, 'setMyCommands', [
+        'commands' => [
+            ['command' => 'start', 'description' => '启动助手并开启底部快捷键盘菜单'],
+            ['command' => 'draw', 'description' => '查询最新一期开奖结果与生肖波色'],
+            ['command' => 'predict', 'description' => '50期规律AI智能推演预测推荐'],
+            ['command' => 'history', 'description' => '翻页查看历史开奖与推演命中'],
+            ['command' => 'stats', 'description' => '每日下注累计盈亏与准确率报表'],
+            ['command' => 'bind', 'description' => '绑定当前群组/私聊为定时推送目标'],
+            ['command' => 'help', 'description' => '查看详细使用说明与指令指南']
+        ]
+    ]);
+
     if ($res['ok'] ?? false) {
         writeLogPHP('Webhook', 'success', "已成功绑定 Webhook: {$webhookUrl}");
         echo json_encode([

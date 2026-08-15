@@ -52,27 +52,29 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             }
 
             // 映射键盘菜单点击文本
-            if (strpos($text, '最新开奖') !== false) $text = '/draw';
-            else if (strpos($text, '智能预测') !== false) $text = '/predict';
-            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false) $text = '/stats';
-            else if (strpos($text, '历史记录') !== false) $text = '/history 1';
-            else if (strpos($text, '帮助') !== false) $text = '/help';
+            if (strpos($text, '最新开奖') !== false || strpos($text, '开奖') !== false) $text = '/draw';
+            else if (strpos($text, '智能预测') !== false || strpos($text, '预测') !== false || strpos($text, '推演') !== false) $text = '/predict';
+            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '统计') !== false) $text = '/stats';
+            else if (strpos($text, '历史记录') !== false || strpos($text, '历史') !== false) $text = '/history 1';
+            else if (strpos($text, '帮助') !== false || strpos($text, '说明') !== false) $text = '/help';
+            else if (strpos($text, '绑定') !== false || strpos($text, '推送') !== false) $text = '/bind';
         }
 
         if (!$chatId) return;
 
-        // 通用 Reply Keyboard 菜单
+        // 通用 Reply Keyboard 底部常驻 6 宫格键盘菜单
         $replyKeyboard = [
             'keyboard' => [
-                [['text' => '🎰 最新开奖'], ['text' => '📜 历史记录']],
-                [['text' => '🧠 智能预测'], ['text' => '📊 盈亏统计']]
+                [['text' => '🎰 最新开奖'], ['text' => '🧠 智能预测']],
+                [['text' => '📜 历史记录'], ['text' => '📊 盈亏统计']],
+                [['text' => '❓ 帮助说明'], ['text' => '⚙️ 绑定推送']]
             ],
             'resize_keyboard' => true,
-            'one_time_keyboard' => false
+            'is_persistent' => true
         ];
 
         // 统一发送/编辑辅助函数 (使用 Webhook Direct Response 机制，零网络延迟，避免服务器出站受阻)
-        $deliverMessage = function($msgText, $inlineButtons) use ($token, $chatId, $messageId, $userMessageId, $isCallback, $replyKeyboard, &$text) {
+        $deliverMessage = function($msgText, $inlineButtons = [], $forceReplyKeyboard = false) use ($token, $chatId, $messageId, $userMessageId, $isCallback, $replyKeyboard, &$text) {
             if ($isCallback && $messageId) {
                 $payload = [
                     'method' => 'editMessageText',
@@ -80,22 +82,34 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     'message_id' => $messageId,
                     'text' => $msgText,
                     'parse_mode' => 'HTML',
-                    'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                    'reply_markup' => !empty($inlineButtons) ? ['inline_keyboard' => $inlineButtons] : null
                 ];
             } else {
+                $markup = $replyKeyboard;
+                if (!$forceReplyKeyboard && !empty($inlineButtons)) {
+                    $markup = ['inline_keyboard' => $inlineButtons];
+                }
+
                 $payload = [
                     'method' => 'sendMessage',
                     'chat_id' => $chatId,
                     'text' => $msgText,
                     'parse_mode' => 'HTML',
-                    'reply_markup' => ['inline_keyboard' => $inlineButtons]
+                    'reply_markup' => $markup
                 ];
             }
 
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
             if (!headers_sent()) {
+                http_response_code(200);
                 header('Content-Type: application/json; charset=utf-8');
             }
             echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
             exit;
         };
 
@@ -141,8 +155,8 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 [['text' => '🔄 刷新使用说明', 'callback_data' => 'cmd_help']]
             ];
 
-            $deliverMessage($msgText, $inlineButtons);
-            writeLogPHP('Webhook指令', 'success', "响应 /help 给 {$chatId}");
+            $deliverMessage($msgText, [], true);
+            writeLogPHP('Webhook指令', 'success', "响应 /start|/help 并激活底部键盘菜单给 {$chatId}");
             return;
         }
 
