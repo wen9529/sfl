@@ -27,9 +27,6 @@ async function startServer() {
       console.error("读取 last_pushed_issue.txt 失败:", e);
     }
   }
-  if (!lastPushedIssue && currentDraws.length > 0) {
-    lastPushedIssue = currentDraws[0].expect;
-  }
 
   // Telegram Bot 配置状态 (增加与 config.php 相同的硬编码默认值作为回退)
   let telegramConfig = {

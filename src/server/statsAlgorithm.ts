@@ -194,8 +194,8 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   // ==========================================
   let biasSizeOffset = 0.0; // 正值偏向大，负值偏向小
   let biasParityOffset = 0.0; // 正值偏向单，负值偏向双
-  if (draws.length >= 15) {
-    // 采用滑动窗口，对过去 5 期执行历史虚逆预测，度量模型本期所处波段的漂移误差，进行动态反向注入
+  if (draws.length >= 20) {
+    // 评估模型对过去 5 期开奖的微小误差，进行有界自适应纠偏 (上限 ±0.03)
     for (let i = 1; i <= 5; i++) {
       const hist = draws.slice(i);
       const actualDraw = draws[i - 1];
@@ -206,7 +206,6 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         const actualBig = special >= 25;
         const actualOdd = special % 2 !== 0;
 
-        // 计算简易滑窗均值回归
         let bigs = 0, odds = 0, countVal = 0;
         hist.slice(0, 20).forEach(d => {
           const c = d.openCode.split(',').map(Number);
@@ -219,18 +218,22 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         const ratioBig = countVal > 0 ? bigs / countVal : 0.5;
         const ratioOdd = countVal > 0 ? odds / countVal : 0.5;
 
-        const predBig = ratioBig < 0.5;
-        const predOdd = ratioOdd < 0.5;
+        // 对过去趋势方向进行对决度量
+        const predBig = ratioBig >= 0.5;
+        const predOdd = ratioOdd >= 0.5;
 
         if (predBig !== actualBig) {
-          biasSizeOffset += (actualBig ? 0.05 : -0.05);
+          biasSizeOffset += (actualBig ? 0.006 : -0.006);
         }
         if (predOdd !== actualOdd) {
-          biasParityOffset += (actualOdd ? 0.05 : -0.05);
+          biasParityOffset += (actualOdd ? 0.006 : -0.006);
         }
       }
     }
   }
+  // 严格限制偏差偏移量在 ±0.03 范围内，防止形成单向积累漏斗
+  biasSizeOffset = Math.max(-0.03, Math.min(0.03, biasSizeOffset));
+  biasParityOffset = Math.max(-0.03, Math.min(0.03, biasParityOffset));
 
   // ==========================================
   // 2. N-Gram 序列状态链模式匹配引擎
@@ -295,23 +298,17 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
       }
 
       if (matchSizeTotal > 0) {
-        nGramSizeProb = matchSizeBig / matchSizeTotal;
+        nGramSizeProb = (matchSizeBig + 1) / (matchSizeTotal + 2); // 拉普拉斯平滑
         nGramMatches = matchSizeTotal;
       }
-      if (matchParityTotal() > 0) {
-        // inline match check fallback
-      }
-      const matchOddTot = matchOddTotal;
-      if (matchOddTot > 0) {
-        nGramParityProb = matchOddTrue / matchOddTot;
+      if (matchOddTotal > 0) {
+        nGramParityProb = (matchOddTrue + 1) / (matchOddTotal + 2); // 拉普拉斯平滑
       }
     }
   }
 
-  function matchParityTotal() { return 0; }
-
   // ==========================================
-  // 3. 多时段指数衰减核分布投票 (Multi-Horizon Decay)
+  // 3. 多时段指数衰减核分布投票 (Multi-Horizon Symmetrical Decay)
   // ==========================================
   const horizons = [
     { period: 15, lambda: 0.05, weight: 0.45 },
@@ -319,8 +316,8 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     { period: 100, lambda: 0.006, weight: 0.20 }
   ];
 
-  let integratedSizeProb = 0.0;
-  let integratedParityProb = 0.0;
+  let integratedSizeProb = 0.0;   // 代表“大”的概率期望
+  let integratedParityProb = 0.0; // 代表“单”的概率期望
 
   horizons.forEach(hor => {
     const lim = Math.min(draws.length, hor.period);
@@ -343,13 +340,51 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     const sizeRatio = weightSum > 0 ? sizeSum / weightSum : 0.5;
     const parityRatio = weightSum > 0 ? paritySum / weightSum : 0.5;
 
-    // 均值回归期望
-    integratedSizeProb += (1.0 - sizeRatio) * hor.weight;
-    integratedParityProb += (1.0 - parityRatio) * hor.weight;
+    // 均值回归期望公式：P = 0.75 - 0.5 * ratio (对称有界 0.25..0.75)
+    // 当历史大占 50% 时，P_大 = 0.50
+    // 当历史大占 60% 时，P_大 = 0.45 (小占 0.55，促进均值回归)
+    // 当历史大占 40% 时，P_大 = 0.55 (大占 0.55，促进均值回归)
+    const pBigExpect = 0.75 - 0.50 * sizeRatio;
+    const pOddExpect = 0.75 - 0.50 * parityRatio;
+
+    integratedSizeProb += pBigExpect * hor.weight;
+    integratedParityProb += pOddExpect * hor.weight;
   });
 
+  // 计算 100 期基准分布概率，用于对 Markov 条件转移进行基准解耦 (Detrending)
+  let baseBig = 0.5, baseSmall = 0.5;
+  let baseOdd = 0.5, baseEven = 0.5;
+  let baseRed = 0.347, baseBlue = 0.3265, baseGreen = 0.3265;
+  if (draws.length >= 20) {
+    let countB = 0, countS = 0, countO = 0, countE = 0;
+    let countR = 0, countBl = 0, countG = 0, countTot = 0;
+    const maxB = Math.min(draws.length, 100);
+    for (let i = 0; i < maxB; i++) {
+      const c = draws[i].openCode.split(',').map(Number);
+      if (c.length >= 7 && c[6] !== 49) {
+        const sp = c[6];
+        if (sp >= 25) countB++; else countS++;
+        if (sp % 2 !== 0) countO++; else countE++;
+        const w = getWaveColor(sp);
+        if (w === 'red') countR++;
+        else if (w === 'blue') countBl++;
+        else countG++;
+        countTot++;
+      }
+    }
+    if (countTot > 0) {
+      baseBig = countB / countTot;
+      baseSmall = countS / countTot;
+      baseOdd = countO / countTot;
+      baseEven = countE / countTot;
+      baseRed = countR / countTot;
+      baseBlue = countBl / countTot;
+      baseGreen = countG / countTot;
+    }
+  }
+
   // ==========================================
-  // 4. 二阶马尔可夫条件自适应转移矩阵
+  // 4. 二阶马尔可夫条件自适应转移矩阵 (带拉普拉斯平滑与基准归一)
   // ==========================================
   let bbToB = 0, bbToS = 0, bsToB = 0, bsToS = 0;
   let sbToB = 0, sbToS = 0, ssToB = 0, ssToS = 0;
@@ -414,36 +449,44 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     const lastOdd = lastSpecial % 2 !== 0;
     const prevOdd = prevSpecial % 2 !== 0;
 
+    // 原始平滑条件概率
+    let rawBig = 0.5, rawSmall = 0.5;
     if (prevBig && lastBig) {
-      const tot = bbToB + bbToS;
-      if (tot > 0) { pBig = bbToB / tot; pSmall = bbToS / tot; }
+      rawBig = (bbToB + 2) / (bbToB + bbToS + 4);
     } else if (prevBig && !lastBig) {
-      const tot = bsToB + bsToS;
-      if (tot > 0) { pBig = bsToB / tot; pSmall = bsToS / tot; }
+      rawBig = (bsToB + 2) / (bsToB + bsToS + 4);
     } else if (!prevBig && lastBig) {
-      const tot = sbToB + sbToS;
-      if (tot > 0) { pBig = sbToB / tot; pSmall = sbToS / tot; }
+      rawBig = (sbToB + 2) / (sbToB + sbToS + 4);
     } else {
-      const tot = ssToB + ssToS;
-      if (tot > 0) { pBig = ssToB / tot; pSmall = ssToS / tot; }
+      rawBig = (ssToB + 2) / (ssToB + ssToS + 4);
     }
+    rawSmall = 1.0 - rawBig;
 
+    // 基准归一化 (Detrending)：消除基准偏置影响，仅保留状态转移偏向
+    const ratioB = rawBig / Math.max(0.1, baseBig);
+    const ratioS = rawSmall / Math.max(0.1, baseSmall);
+    pBig = ratioB / (ratioB + ratioS);
+    pSmall = 1.0 - pBig;
+
+    let rawOdd = 0.5, rawEven = 0.5;
     if (prevOdd && lastOdd) {
-      const tot = ooToO + ooToE;
-      if (tot > 0) { pOdd = ooToO / tot; pEven = ooToE / tot; }
+      rawOdd = (ooToO + 2) / (ooToO + ooToE + 4);
     } else if (prevOdd && !lastOdd) {
-      const tot = oeToO + oeToE;
-      if (tot > 0) { pOdd = oeToO / tot; pEven = oeToE / tot; }
+      rawOdd = (oeToO + 2) / (oeToO + oeToE + 4);
     } else if (!prevOdd && lastOdd) {
-      const tot = eoToO + eoToE;
-      if (tot > 0) { pOdd = eoToO / tot; pEven = eoToE / tot; }
+      rawOdd = (eoToO + 2) / (eoToO + eoToE + 4);
     } else {
-      const tot = eeToO + eeToE;
-      if (tot > 0) { pOdd = eeToO / tot; pEven = eeToE / tot; }
+      rawOdd = (eeToO + 2) / (eeToO + eeToE + 4);
     }
+    rawEven = 1.0 - rawOdd;
+
+    const ratioO = rawOdd / Math.max(0.1, baseOdd);
+    const ratioE = rawEven / Math.max(0.1, baseEven);
+    pOdd = ratioO / (ratioO + ratioE);
+    pEven = 1.0 - pOdd;
   }
 
-  // 二阶波色状态选择
+  // 二阶波色状态转移统计
   let rToR = 0, rToB = 0, rToG = 0;
   let bToR = 0, bToB = 0, bToG = 0;
   let gToR = 0, gToB = 0, gToG = 0;
@@ -465,18 +508,101 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     }
   }
 
-  let pRed = 0.33, pBlue = 0.33, pGreen = 0.33;
+  let pRed_mk = 0.347, pBlue_mk = 0.3265, pGreen_mk = 0.3265;
   const lastWave = getWaveColor(lastSpecial);
   if (lastSpecial !== 49) {
+    let rawR = 0.33, rawB = 0.33, rawG = 0.33;
     if (lastWave === 'red') {
-      const tot = rToR + rToB + rToG;
-      if (tot > 0) { pRed = rToR / tot; pBlue = rToB / tot; pGreen = rToG / tot; }
+      const tot = rToR + rToB + rToG + 6;
+      rawR = (rToR + 2) / tot;
+      rawB = (rToB + 2) / tot;
+      rawG = (rToG + 2) / tot;
     } else if (lastWave === 'blue') {
-      const tot = bToR + bToB + bToG;
-      if (tot > 0) { pRed = bToR / tot; pBlue = bToB / tot; pGreen = bToG / tot; }
+      const tot = bToR + bToB + bToG + 6;
+      rawR = (bToR + 2) / tot;
+      rawB = (bToB + 2) / tot;
+      rawG = (bToG + 2) / tot;
     } else {
-      const tot = gToR + gToB + gToG;
-      if (tot > 0) { pRed = gToR / tot; pBlue = gToB / tot; pGreen = gToG / tot; }
+      const tot = gToR + gToB + gToG + 6;
+      rawR = (gToR + 2) / tot;
+      rawB = (gToB + 2) / tot;
+      rawG = (gToG + 2) / tot;
+    }
+
+    const ratioR = rawR / Math.max(0.1, baseRed);
+    const ratioB = rawB / Math.max(0.1, baseBlue);
+    const ratioG = rawG / Math.max(0.1, baseGreen);
+    const sumRatio = ratioR + ratioB + ratioG || 1;
+    pRed_mk = ratioR / sumRatio;
+    pBlue_mk = ratioB / sumRatio;
+    pGreen_mk = ratioG / sumRatio;
+  }
+
+  // 波色 N-Gram 匹配 (近 3 期波色序列匹配)
+  let pRed_ng = 0.347, pBlue_ng = 0.3265, pGreen_ng = 0.3265;
+  if (draws.length >= 10) {
+    const recentWaves: ('red' | 'blue' | 'green')[] = [];
+    let cnt = 0;
+    for (let i = 0; i < draws.length && cnt < 3; i++) {
+      const c = draws[i].openCode.split(',').map(Number);
+      if (c.length >= 7 && c[6] !== 49) {
+        recentWaves.push(getWaveColor(c[6]));
+        cnt++;
+      }
+    }
+    if (cnt === 3) {
+      const targetSeq = [recentWaves[2], recentWaves[1], recentWaves[0]];
+      let mR = 0, mB = 0, mG = 0;
+      const maxSearch = Math.min(draws.length - 4, 100);
+      for (let i = 0; i < maxSearch; i++) {
+        const wSeq: ('red' | 'blue' | 'green')[] = [];
+        for (let j = 0; j < 4; j++) {
+          const c = draws[i + j].openCode.split(',').map(Number);
+          if (c.length >= 7 && c[6] !== 49) wSeq.push(getWaveColor(c[6]));
+        }
+        if (wSeq.length === 4) {
+          if (wSeq[3] === targetSeq[0] && wSeq[2] === targetSeq[1] && wSeq[1] === targetSeq[2]) {
+            if (wSeq[0] === 'red') mR++;
+            else if (wSeq[0] === 'blue') mB++;
+            else mG++;
+          }
+        }
+      }
+      const totNG = mR + mB + mG + 3;
+      pRed_ng = (mR + 1) / totNG;
+      pBlue_ng = (mB + 1) / totNG;
+      pGreen_ng = (mG + 1) / totNG;
+    }
+  }
+
+  // 波色多时段指数衰减与均值回归
+  let pRed_mh = 0.347, pBlue_mh = 0.3265, pGreen_mh = 0.3265;
+  {
+    let sumR = 0, sumB = 0, sumG = 0, sumW = 0;
+    const maxLim = Math.min(draws.length, 50);
+    for (let t = 0; t < maxLim; t++) {
+      const c = draws[t].openCode.split(',').map(Number);
+      if (c.length >= 7 && c[6] !== 49) {
+        const decayW = Math.exp(-0.02 * t);
+        const w = getWaveColor(c[6]);
+        if (w === 'red') sumR += decayW;
+        else if (w === 'blue') sumB += decayW;
+        else sumG += decayW;
+        sumW += decayW;
+      }
+    }
+    if (sumW > 0) {
+      const rR = sumR / sumW;
+      const rB = sumB / sumW;
+      const rG = sumG / sumW;
+      // 均值回归反向纠偏：偏离基础概率时反向拉回
+      const expR = 0.347 + 0.40 * (0.347 - rR);
+      const expB = 0.3265 + 0.40 * (0.3265 - rB);
+      const expG = 0.3265 + 0.40 * (0.3265 - rG);
+      const totExp = Math.max(0.1, expR) + Math.max(0.1, expB) + Math.max(0.1, expG);
+      pRed_mh = Math.max(0.1, expR) / totExp;
+      pBlue_mh = Math.max(0.1, expB) / totExp;
+      pGreen_mh = Math.max(0.1, expG) / totExp;
     }
   }
 
@@ -525,13 +651,11 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   const maxConsecutiveSize = Math.max(consecutiveBig, consecutiveSmall);
   if (maxConsecutiveSize >= 3) {
     if (maxConsecutiveSize <= 5) {
-      // 3-5期：均值回归拦截 (反转趋势)
       dragonSizeAction = consecutiveBig > 0 ? 'REVERSE_SMALL' : 'REVERSE_BIG';
-      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 2) * 0.25; // 强度系数: 1.25 -> 1.75
+      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 2) * 0.15; // 限制至 1.15 -> 1.45
     } else {
-      // >= 6期：长龙迟滞，进入趋势追随阶段 (龙王降临，切莫强阻)
       dragonSizeAction = consecutiveBig > 0 ? 'FOLLOW_BIG' : 'FOLLOW_SMALL';
-      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 5) * 0.20; // 强度系数 1.2 -> 2.0+
+      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 5) * 0.15;
     }
   }
 
@@ -540,10 +664,10 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   if (maxConsecutiveParity >= 3) {
     if (maxConsecutiveParity <= 5) {
       dragonParityAction = consecutiveOdd > 0 ? 'REVERSE_EVEN' : 'REVERSE_ODD';
-      parityDragonStrength = 1.0 + (maxConsecutiveParity - 2) * 0.25;
+      parityDragonStrength = 1.0 + (maxConsecutiveParity - 2) * 0.15;
     } else {
       dragonParityAction = consecutiveOdd > 0 ? 'FOLLOW_ODD' : 'FOLLOW_EVEN';
-      parityDragonStrength = 1.0 + (maxConsecutiveParity - 5) * 0.20;
+      parityDragonStrength = 1.0 + (maxConsecutiveParity - 5) * 0.15;
     }
   }
 
@@ -576,7 +700,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
 
   // 重号、邻号、遗漏反弹
   if (lastSpecial >= 1 && lastSpecial <= 49) {
-    scores[lastSpecial] += 0.22; // 重号概率
+    scores[lastSpecial] += 0.22;
     const left = lastSpecial === 1 ? 49 : lastSpecial - 1;
     const right = lastSpecial === 49 ? 1 : lastSpecial + 1;
     scores[left] += 0.15;
@@ -587,9 +711,9 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     const theoreticalOmit = 49 / Math.max(1, counts[n]);
     const omitRatio = omission[n] / Math.max(1, theoreticalOmit);
     if (omitRatio > 1.4) {
-      scores[n] += Math.min(0.4, (omitRatio - 1.4) * 0.12); // 极值反弹
+      scores[n] += Math.min(0.4, (omitRatio - 1.4) * 0.12);
     } else if (omitRatio < 0.4) {
-      scores[n] -= 0.08; // 极热降温
+      scores[n] -= 0.08;
     }
   }
 
@@ -615,39 +739,36 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     const f = getFiveElements(n);
     const zCount = zodiacCounts[z] || 0;
     const fCount = fiveElementCounts[f] || 0;
-    if (zCount <= 1.0) scores[n] += 0.12; // 极冷生肖补偿
-    if (fCount <= 3.0) scores[n] += 0.10; // 极冷五行平衡
+    if (zCount <= 1.0) scores[n] += 0.12;
+    if (fCount <= 3.0) scores[n] += 0.10;
   }
 
-  // 号码级概率分配
+  // 号码级概率分配 (归一化到波色/大小/单双)
   let sumScore = 0;
   for (let n = 1; n <= 49; n++) sumScore += scores[n];
 
-  let scoreBig = 0, scoreSmall = 0;
-  let scoreOdd = 0, scoreEven = 0;
   let scoreRed = 0, scoreBlue = 0, scoreGreen = 0;
 
   for (let n = 1; n <= 49; n++) {
     const prob = scores[n] / (sumScore || 1);
-    const isNBig = n >= 25;
-    const isNOdd = n % 2 !== 0;
     const w = getWaveColor(n);
-
-    if (n < 49) {
-      if (isNBig) scoreBig += prob; else scoreSmall += prob;
-      if (isNOdd) scoreOdd += prob; else scoreEven += prob;
-    }
     if (w === 'red') scoreRed += prob;
     else if (w === 'blue') scoreBlue += prob;
     else scoreGreen += prob;
   }
 
+  // 按球数 (红17、蓝16、绿16) 归一化 density，消除球数不均基数偏差
+  const densityRed = (scoreRed / 17);
+  const densityBlue = (scoreBlue / 16);
+  const densityGreen = (scoreGreen / 16);
+  const densitySum = densityRed + densityBlue + densityGreen || 1;
+  const normDensityRed = densityRed / densitySum;
+  const normDensityBlue = densityBlue / densitySum;
+  const normDensityGreen = densityGreen / densitySum;
+
   // ==========================================
   // 6.5. 动态自适应多模型回测权重推演系统 (Dynamic Softmax Ensemble Engine)
   // ==========================================
-  // 我们在过去 8 期历史上，对 Multi-Horizon, Markov, N-Gram 进行虚实对决，
-  // 统计每种模型在大小和单双维度的最近准确率 (Hit Count)，并基于 1.5 温度系数 Softmax 归一化，
-  // 动态生成本期集成决策权重，完美自适应当前走势波动！
   let weightMultiHorizon = 0.40;
   let weightMarkov = 0.30;
   let weightNGram = 0.30;
@@ -674,9 +795,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
       let mParityProb = 0.0;
       horizons.forEach(hor => {
         const lim = Math.min(hist.length, hor.period);
-        let sizeSum = 0;
-        let paritySum = 0;
-        let weightSum = 0;
+        let sizeSum = 0, paritySum = 0, weightSum = 0;
         for (let t = 0; t < lim; t++) {
           const codes = hist[t].openCode.split(',').map(Number);
           if (codes.length >= 7) {
@@ -690,8 +809,8 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         }
         const sRatio = weightSum > 0 ? sizeSum / weightSum : 0.5;
         const pRatio = weightSum > 0 ? paritySum / weightSum : 0.5;
-        mSizeProb += (1.0 - sRatio) * hor.weight;
-        mParityProb += (1.0 - pRatio) * hor.weight;
+        mSizeProb += (0.75 - 0.50 * sRatio) * hor.weight;
+        mParityProb += (0.75 - 0.50 * pRatio) * hor.weight;
       });
       const predMSize = mSizeProb >= 0.5;
       const predMParity = mParityProb >= 0.5;
@@ -730,7 +849,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
 
       const lCodes = hist[0].openCode.split(',').map(Number);
       const pCodes = hist[1] ? hist[1].openCode.split(',').map(Number) : lCodes;
-      let mkBig = 0.5, mkSmall = 0.5, mkOdd = 0.5, mkEven = 0.5;
+      let mkBig = 0.5, mkOdd = 0.5;
 
       if (lCodes.length >= 7 && pCodes.length >= 7 && lCodes[6] !== 49 && pCodes[6] !== 49) {
         const lastB = lCodes[6] >= 25;
@@ -738,18 +857,18 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
         const lastO = lCodes[6] % 2 !== 0;
         const prevO = pCodes[6] % 2 !== 0;
 
-        if (prevB && lastB) { const t = bb_B + bb_S; if (t > 0) { mkBig = bb_B / t; mkSmall = bb_S / t; } }
-        else if (prevB && !lastB) { const t = bs_B + bs_S; if (t > 0) { mkBig = bs_B / t; mkSmall = bs_S / t; } }
-        else if (!prevB && lastB) { const t = sb_B + sb_S; if (t > 0) { mkBig = sb_B / t; mkSmall = sb_S / t; } }
-        else { const t = ss_B + ss_S; if (t > 0) { mkBig = ss_B / t; mkSmall = ss_S / t; } }
+        if (prevB && lastB) { mkBig = (bb_B + 2) / (bb_B + bb_S + 4); }
+        else if (prevB && !lastB) { mkBig = (bs_B + 2) / (bs_B + bs_S + 4); }
+        else if (!prevB && lastB) { mkBig = (sb_B + 2) / (sb_B + sb_S + 4); }
+        else { mkBig = (ss_B + 2) / (ss_B + ss_S + 4); }
 
-        if (prevO && lastO) { const t = oo_O + oo_E; if (t > 0) { mkOdd = oo_O / t; mkEven = oo_E / t; } }
-        else if (prevO && !lastO) { const t = oe_O + oe_E; if (t > 0) { mkOdd = oe_O / t; mkEven = oe_E / t; } }
-        else if (!prevO && lastO) { const t = eo_O + eo_E; if (t > 0) { mkOdd = eo_O / t; mkEven = eo_E / t; } }
-        else { const t = ee_O + ee_E; if (t > 0) { mkOdd = ee_O / t; mkEven = ee_E / t; } }
+        if (prevO && lastO) { mkOdd = (oo_O + 2) / (oo_O + oo_E + 4); }
+        else if (prevO && !lastO) { mkOdd = (oe_O + 2) / (oe_O + oe_E + 4); }
+        else if (!prevO && lastO) { mkOdd = (eo_O + 2) / (eo_O + eo_E + 4); }
+        else { mkOdd = (ee_O + 2) / (ee_O + ee_E + 4); }
       }
-      const predMKSize = mkBig >= mkSmall;
-      const predMKParity = mkOdd >= mkEven;
+      const predMKSize = mkBig >= 0.5;
+      const predMKParity = mkOdd >= 0.5;
 
       // 3) N-Gram
       let ngSizeProb = 0.5;
@@ -789,8 +908,8 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
             if (hO[0] === pO[0] && hO[1] === pO[1] && hO[2] === pO[2]) { mOT++; if (hNO) mOE++; }
           }
         }
-        if (mST > 0) ngSizeProb = mSB / mST;
-        if (mOT > 0) ngParityProb = mOE / mOT;
+        if (mST > 0) ngSizeProb = (mSB + 1) / (mST + 2);
+        if (mOT > 0) ngParityProb = (mOE + 1) / (mOT + 2);
       }
       const predNGSize = ngSizeProb >= 0.5;
       const predNGParity = ngParityProb >= 0.5;
@@ -813,10 +932,10 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
       const accMK = hitMarkov / totalRounds;
       const accNG = hitNGram / totalRounds;
 
-      // Softmax with temperature 0.15 (accentuate better models)
-      const expMH = Math.exp(accMH / 0.15);
-      const expMK = Math.exp(accMK / 0.15);
-      const expNG = Math.exp(accNG / 0.15);
+      // Softmax with temperature 0.20
+      const expMH = Math.exp(accMH / 0.20);
+      const expMK = Math.exp(accMK / 0.20);
+      const expNG = Math.exp(accNG / 0.20);
       const sumExp = expMH + expMK + expNG;
 
       weightMultiHorizon = expMH / sumExp;
@@ -829,12 +948,12 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   // 7. 多维混合模型加权决策计算 (Comprehensive Weighting)
   // ==========================================
   // 大小属性综合概率: 动态自适应集成权重分配
-  let finalBigScore = (integratedSizeProb) * weightMultiHorizon + (scoreBig * pBig) * weightMarkov + (nGramSizeProb) * weightNGram;
-  let finalSmallScore = (1.0 - integratedSizeProb) * weightMultiHorizon + (scoreSmall * pSmall) * weightMarkov + (1.0 - nGramSizeProb) * weightNGram;
+  let finalBigScore = (integratedSizeProb) * weightMultiHorizon + pBig * weightMarkov + (nGramSizeProb) * weightNGram;
+  let finalSmallScore = (1.0 - integratedSizeProb) * weightMultiHorizon + pSmall * weightMarkov + (1.0 - nGramSizeProb) * weightNGram;
 
   // 单双属性综合概率
-  let finalOddScore = (integratedParityProb) * weightMultiHorizon + (scoreOdd * pOdd) * weightMarkov + (nGramParityProb) * weightNGram;
-  let finalEvenScore = (1.0 - integratedParityProb) * weightMultiHorizon + (scoreEven * pEven) * weightMarkov + (1.0 - nGramParityProb) * weightNGram;
+  let finalOddScore = (integratedParityProb) * weightMultiHorizon + pOdd * weightMarkov + (nGramParityProb) * weightNGram;
+  let finalEvenScore = (1.0 - integratedParityProb) * weightMultiHorizon + pEven * weightMarkov + (1.0 - nGramParityProb) * weightNGram;
 
   // 注入自适应自我纠偏反馈因子
   finalBigScore += biasSizeOffset;
@@ -854,27 +973,23 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   }
 
   if (dragonParityAction === 'REVERSE_EVEN') {
-    finalEvenScore *= parityParityStrength();
+    finalEvenScore *= parityDragonStrength;
   } else if (dragonParityAction === 'REVERSE_ODD') {
-    finalOddScore *= parityParityStrength();
+    finalOddScore *= parityDragonStrength;
   } else if (dragonParityAction === 'FOLLOW_ODD') {
-    finalOddScore *= parityParityStrength();
+    finalOddScore *= parityDragonStrength;
   } else if (dragonParityAction === 'FOLLOW_EVEN') {
-    finalEvenScore *= parityParityStrength();
-  }
-
-  function parityParityStrength() {
-    return parityDragonStrength;
+    finalEvenScore *= parityDragonStrength;
   }
 
   // 归一化判定
   const sizePred: '大' | '小' = finalBigScore >= finalSmallScore ? '大' : '小';
   const parityPred: '单' | '双' = finalOddScore >= finalEvenScore ? '单' : '双';
 
-  // 波色决策
-  const finalRedScore = scoreRed * pRed;
-  const finalBlueScore = scoreBlue * pBlue;
-  const finalGreenScore = scoreGreen * pGreen;
+  // 波色决策: 融合多时段核分布 (30%) + 马尔可夫转移 (30%) + N-Gram 序列模式 (20%) + 号码密分布 (20%)
+  const finalRedScore = 0.30 * pRed_mh + 0.30 * pRed_mk + 0.20 * pRed_ng + 0.20 * normDensityRed;
+  const finalBlueScore = 0.30 * pBlue_mh + 0.30 * pBlue_mk + 0.20 * pBlue_ng + 0.20 * normDensityBlue;
+  const finalGreenScore = 0.30 * pGreen_mh + 0.30 * pGreen_mk + 0.20 * pGreen_ng + 0.20 * normDensityGreen;
 
   let colorPred: '红波' | '蓝波' | '绿波' = '红波';
   let colorOdds = 2.75;
@@ -913,7 +1028,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   } else if (dragonSizeAction && dragonSizeAction.startsWith('REVERSE')) {
     rparts.push(`【大小维度 - 均值回归模式】：大小指标连出达 ${maxConsecutiveSize} 期，触发 ${sizeDragonStrength.toFixed(2)} 倍率波动极值回归，强烈推荐反投【${sizePred}】。`);
   } else {
-    rparts.push(`【大小维度 - 级联集成模型】：多时段核分布均值 (${(integratedSizeProb * 100).toFixed(1)}% 偏大期望) 协同 Markov (${Math.round(Math.max(pBig, pSmall) * 100)}%) 及 N-Gram (${nGramMatches}次匹配)，推算最佳买【${sizePred}】。`);
+    rparts.push(`【大小维度 - 级联集成模型】：多时段核分布均值 (${(integratedSizeProb * 100).toFixed(1)}% 偏大期望) 协同 Markov (${Math.round(pBig * 100)}%) 及 N-Gram (${nGramMatches}次匹配)，推算最佳买【${sizePred}】。`);
   }
 
   // 单双决策描述
@@ -946,6 +1061,7 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
     rationale,
   };
 }
+
 
 /**
  * 统计预测下注回测盈亏报表
