@@ -110,19 +110,22 @@ if (!function_exists('getLatestDrawsPHP')) {
         }
         
         if ($draws === null) {
-            // 尝试从远程抓取 50 期数据 (设置 2 秒快速超时，避免拖慢 Telegram 响应)
+            // 尝试从远程极速抓取 (设置 1 秒快速超时，避免拖慢 Telegram 响应)
             $draws = [];
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, "https://history.macaumarksix.com/history/macaujc3");
             curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['page' => 1, 'pageSize' => 480]));
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['page' => 1, 'pageSize' => 120]));
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 1);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
-            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+                curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            }
             curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
             curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
             
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -144,7 +147,7 @@ if (!function_exists('getLatestDrawsPHP')) {
                 }
 
                 if (!empty($rawList) && is_array($rawList)) {
-                    foreach (array_slice($rawList, 0, 3360) as $item) {
+                    foreach (array_slice($rawList, 0, 120) as $item) {
                         $rawCodes = explode(',', $item['openCode'] ?? '');
                         if (count($rawCodes) >= 7) {
                             $intCodes = array_map('intval', array_slice($rawCodes, 0, 7));
@@ -155,7 +158,7 @@ if (!function_exists('getLatestDrawsPHP')) {
                                 'openTime' => $item['openTime'] ?? date('Y-m-d H:i:s'),
                                 'wave' => $item['wave'] ?? implode(',', array_map('getWaveColorPHP', $intCodes)),
                                 'zodiac' => $item['zodiac'] ?? implode(',', array_map('getZodiacPHP', $intCodes)),
-                                'fiveElements' => implode(',', array_map('getFiveElementsPHP', $intCodes))
+                                'fiveElements' => $item['fiveElements'] ?? implode(',', array_map('getFiveElementsPHP', $intCodes))
                             ];
                         }
                     }
@@ -168,7 +171,7 @@ if (!function_exists('getLatestDrawsPHP')) {
             }
             
             // 保存缓存
-            file_put_contents($cacheFile, json_encode([
+            @file_put_contents($cacheFile, json_encode([
                 'time' => time(),
                 'draws' => $draws
             ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));

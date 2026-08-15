@@ -758,6 +758,15 @@ if (!function_exists('syncPredictionsDatabasePHP')) {
             $db = json_decode(file_get_contents($dbFile), true) ?: [];
         }
 
+        // 0. 极速检查：如果最新期开奖与下一期预测均已存在且已结算，直接跳过计算
+        if (!empty($draws[0]['expect'])) {
+            $latestExp = (string)$draws[0]['expect'];
+            $nextExp = getNextIssuePHP($latestExp);
+            if (isset($db[$latestExp]) && !empty($db[$latestExp]['openCode']) && isset($db[$nextExp])) {
+                return;
+            }
+        }
+
         // 1. 清理超过 7 天的老旧期数记录
         $cutoffDate = date('Ymd', strtotime('-7 days'));
         foreach ($db as $exp => $record) {
