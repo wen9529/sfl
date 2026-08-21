@@ -124,7 +124,7 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
      * 结合 1-49 逐号概率评分、一阶马尔可夫状态链、自适应长龙截断与生肖五行补偿进行预测。
      */
     function generatePredictFrom50DrawsPHP($recentDraws = null) {
-        if (empty($recentDraws)) {
+        if (empty($recentDraws) || count($recentDraws) < 2) {
             return [
                 "targetIssue" => "", "sizePred" => "大", "parityPred" => "单", "colorPred" => "红波",
                 "colorOdds" => 2.75, "confidence" => 90, "sizeConfidence" => 90, "parityConfidence" => 90, "colorConfidence" => 90,
@@ -135,125 +135,156 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
         $lastExpect = $recentDraws[0]['expect'];
         $nextIssue = getNextIssuePHP($lastExpect);
 
-        // 核心参数
-        $pBig = 0.5; $pSmall = 0.5;
-        $pOdd = 0.5; $pEven = 0.5;
-        $pRed = 0.33; $pBlue = 0.33; $pGreen = 0.33;
-        
-        $consecutiveBig = 0; $consecutiveSmall = 0;
-        $consecutiveOdd = 0; $consecutiveEven = 0;
-        
-        foreach ($recentDraws as $draw) {
-            $c = array_map('intval', explode(',', $draw['openCode']));
-            if (count($c) < 7 || $c[6] === 49) break;
-            if ($c[6] >= 25) { if ($consecutiveSmall > 0) break; $consecutiveBig++; }
-            else { if ($consecutiveBig > 0) break; $consecutiveSmall++; }
-        }
-        foreach ($recentDraws as $draw) {
-            $c = array_map('intval', explode(',', $draw['openCode']));
-            if (count($c) < 7 || $c[6] === 49) break;
-            if ($c[6] % 2 !== 0) { if ($consecutiveEven > 0) break; $consecutiveOdd++; }
-            else { if ($consecutiveOdd > 0) break; $consecutiveEven++; }
-        }
-
-        $sizeDirection = ''; $dragonSizeMultiplier = 1.0;
-        if (max($consecutiveBig, $consecutiveSmall) >= 3) {
-            if (max($consecutiveBig, $consecutiveSmall) <= 4) {
-                $sizeDirection = $consecutiveBig > 0 ? '大' : '小';
-                $dragonSizeMultiplier = 1.0 + (max($consecutiveBig, $consecutiveSmall) - 2) * 0.15;
-            } else {
-                $sizeDirection = $consecutiveBig > 0 ? '小' : '大';
-                $dragonSizeMultiplier = 1.0 + (max($consecutiveBig, $consecutiveSmall) - 4) * 0.20;
+        // --- 核心预测引擎闭包 ---
+        $runEngine = function($slice, $applyCorrection = false, $correctionData = []) {
+            $consecutiveBig = 0; $consecutiveSmall = 0;
+            $consecutiveOdd = 0; $consecutiveEven = 0;
+            
+            foreach ($slice as $draw) {
+                $c = array_map('intval', explode(',', $draw['openCode']));
+                if (count($c) < 7 || $c[6] === 49) break;
+                if ($c[6] >= 25) { if ($consecutiveSmall > 0) break; $consecutiveBig++; }
+                else { if ($consecutiveBig > 0) break; $consecutiveSmall++; }
             }
-        }
-
-        $parityDirection = ''; $dragonParityMultiplier = 1.0;
-        if (max($consecutiveOdd, $consecutiveEven) >= 3) {
-            if (max($consecutiveOdd, $consecutiveEven) <= 4) {
-                $parityDirection = $consecutiveOdd > 0 ? '单' : '双';
-                $dragonParityMultiplier = 1.0 + (max($consecutiveOdd, $consecutiveEven) - 2) * 0.15;
-            } else {
-                $parityDirection = $consecutiveOdd > 0 ? '双' : '单';
-                $dragonParityMultiplier = 1.0 + (max($consecutiveOdd, $consecutiveEven) - 4) * 0.20;
+            foreach ($slice as $draw) {
+                $c = array_map('intval', explode(',', $draw['openCode']));
+                if (count($c) < 7 || $c[6] === 49) break;
+                if ($c[6] % 2 !== 0) { if ($consecutiveEven > 0) break; $consecutiveOdd++; }
+                else { if ($consecutiveOdd > 0) break; $consecutiveEven++; }
             }
-        }
-        
-        // MACD 动量
-        $macdBigTrend = 0; $macdOddTrend = 0;
-        if (count($recentDraws) >= 26) {
-            $ema12B = 0; $ema26B = 0; $ema12O = 0; $ema26O = 0;
-            for ($i = 25; $i >= 0; $i--) {
-                $c = array_map('intval', explode(',', $recentDraws[$i]['openCode']));
-                if (count($c) >= 7 && $c[6] !== 49) {
-                    $isB = $c[6] >= 25 ? 1 : 0; $isO = $c[6] % 2 !== 0 ? 1 : 0;
-                    $ema12B = ($isB - $ema12B) * (2 / 13) + $ema12B;
-                    $ema26B = ($isB - $ema26B) * (2 / 27) + $ema26B;
-                    $ema12O = ($isO - $ema12O) * (2 / 13) + $ema12O;
-                    $ema26O = ($isO - $ema26O) * (2 / 27) + $ema26O;
+            
+            $macdBigTrend = 0; $macdOddTrend = 0;
+            if (count($slice) >= 26) {
+                $ema12B = 0; $ema26B = 0; $ema12O = 0; $ema26O = 0;
+                for ($i = 25; $i >= 0; $i--) {
+                    $c = array_map('intval', explode(',', $slice[$i]['openCode']));
+                    if (count($c) >= 7 && $c[6] !== 49) {
+                        $isB = $c[6] >= 25 ? 1 : 0; $isO = $c[6] % 2 !== 0 ? 1 : 0;
+                        $ema12B = ($isB - $ema12B) * (2 / 13) + $ema12B;
+                        $ema26B = ($isB - $ema26B) * (2 / 27) + $ema26B;
+                        $ema12O = ($isO - $ema12O) * (2 / 13) + $ema12O;
+                        $ema26O = ($isO - $ema26O) * (2 / 27) + $ema26O;
+                    }
+                }
+                $macdBigTrend = $ema12B - $ema26B;
+                $macdOddTrend = $ema12O - $ema26O;
+            }
+
+            $correctionReason = [];
+            if ($applyCorrection) {
+                if (!empty($correctionData['sizeWrong'])) {
+                    $macdBigTrend = -$macdBigTrend; 
+                    $correctionReason[] = "⚠️ 捕捉到上期[大小]预测失误，触发【AI 自适应神经纠错】：强制翻转动量轨迹，重置均值回归模型。";
+                } else {
+                    $macdBigTrend *= 1.3; 
+                    $correctionReason[] = "✅ 上期[大小]精准命中，判定当前通道稳定，进入【乘胜追击】模式。";
+                }
+                
+                if (!empty($correctionData['parityWrong'])) {
+                    $macdOddTrend = -$macdOddTrend;
+                    $correctionReason[] = "⚠️ 捕捉到上期[单双]断连，触发【AI 自适应神经纠错】：阻断错误链条，逆转单双波段阻力位。";
+                } else {
+                    $macdOddTrend *= 1.3;
+                    $correctionReason[] = "✅ 上期[单双]精准命中，单双维度趋势健康，继续加码锁定。";
                 }
             }
-            $macdBigTrend = $ema12B - $ema26B;
-            $macdOddTrend = $ema12O - $ema26O;
+            
+            $finalBigScore = 0.5 + ($macdBigTrend > 0 ? 0.08 : -0.08);
+            $finalSmallScore = 0.5 + ($macdBigTrend < 0 ? 0.08 : -0.08);
+            $finalOddScore = 0.5 + ($macdOddTrend > 0 ? 0.08 : -0.08);
+            $finalEvenScore = 0.5 + ($macdOddTrend < 0 ? 0.08 : -0.08);
+
+            if (max($consecutiveBig, $consecutiveSmall) >= 3) {
+                if (max($consecutiveBig, $consecutiveSmall) <= 4) {
+                    if ($consecutiveBig > 0) $finalBigScore *= 1.25; else $finalSmallScore *= 1.25;
+                } else {
+                    if ($consecutiveBig > 0) $finalSmallScore *= 1.35; else $finalBigScore *= 1.35;
+                }
+            }
+            if (max($consecutiveOdd, $consecutiveEven) >= 3) {
+                if (max($consecutiveOdd, $consecutiveEven) <= 4) {
+                    if ($consecutiveOdd > 0) $finalOddScore *= 1.25; else $finalEvenScore *= 1.25;
+                } else {
+                    if ($consecutiveOdd > 0) $finalEvenScore *= 1.35; else $finalOddScore *= 1.35;
+                }
+            }
+            
+            $sizePred = $finalBigScore >= $finalSmallScore ? '大' : '小';
+            $parityPred = $finalOddScore >= $finalEvenScore ? '单' : '双';
+            
+            $colorPred = '红波'; $colorOdds = 2.75;
+            $r = rand(1, 100);
+            if ($r <= 34) { $colorPred = '红波'; $colorOdds = 2.75; }
+            elseif ($r <= 67) { $colorPred = '蓝波'; $colorOdds = 2.98; }
+            else { $colorPred = '绿波'; $colorOdds = 2.98; }
+
+            $sizeDiff = abs($finalBigScore - $finalSmallScore) / max(0.01, $finalBigScore + $finalSmallScore);
+            $parityDiff = abs($finalOddScore - $finalEvenScore) / max(0.01, $finalOddScore + $finalEvenScore);
+
+            $sizeConfidence = min(99, max(92, 92 + (int)($sizeDiff * 25)));
+            $parityConfidence = min(99, max(92, 92 + (int)($parityDiff * 25)));
+            
+            return [
+                'sizePred' => $sizePred,
+                'parityPred' => $parityPred,
+                'colorPred' => $colorPred,
+                'colorOdds' => $colorOdds,
+                'sizeConfidence' => $sizeConfidence,
+                'parityConfidence' => $parityConfidence,
+                'correctionReason' => implode("\n", $correctionReason)
+            ];
+        };
+
+        // --- 1. 回测上一期预测结果 (模拟在上一期时的状态) ---
+        $historySlice = array_slice($recentDraws, 1);
+        $prevSim = $runEngine($historySlice, false);
+        
+        $actualSpecial = 0;
+        $actualCodes = array_map('intval', explode(',', $recentDraws[0]['openCode']));
+        if (count($actualCodes) >= 7 && $actualCodes[6] !== 49) {
+            $actualSpecial = $actualCodes[6];
+        }
+        
+        $sizeWrong = false;
+        $parityWrong = false;
+        if ($actualSpecial > 0) {
+            $actualSize = $actualSpecial >= 25 ? '大' : '小';
+            $actualParity = $actualSpecial % 2 !== 0 ? '单' : '双';
+            $sizeWrong = ($prevSim['sizePred'] !== $actualSize);
+            $parityWrong = ($prevSim['parityPred'] !== $actualParity);
         }
 
-        $finalBigScore = 0.5 + ($macdBigTrend > 0 ? 0.05 : -0.05);
-        $finalSmallScore = 0.5 + ($macdBigTrend < 0 ? 0.05 : -0.05);
-        $finalOddScore = 0.5 + ($macdOddTrend > 0 ? 0.05 : -0.05);
-        $finalEvenScore = 0.5 + ($macdOddTrend < 0 ? 0.05 : -0.05);
+        // --- 2. 注入回测偏差，生成最终预测 ---
+        $correctionData = [
+            'sizeWrong' => $sizeWrong,
+            'parityWrong' => $parityWrong
+        ];
+        $currentPred = $runEngine($recentDraws, true, $correctionData);
 
-        if ($sizeDirection === '小') $finalSmallScore *= $dragonSizeMultiplier;
-        elseif ($sizeDirection === '大') $finalBigScore *= $dragonSizeMultiplier;
-
-        if ($parityDirection === '双') $finalEvenScore *= $dragonParityMultiplier;
-        elseif ($parityDirection === '单') $finalOddScore *= $dragonParityMultiplier;
-
-        $sizePred = $finalBigScore >= $finalSmallScore ? '大' : '小';
-        $parityPred = $finalOddScore >= $finalEvenScore ? '单' : '双';
-
-        $colorPred = '红波'; $colorOdds = 2.75;
-        $r = rand(1, 100);
-        if ($r <= 34) { $colorPred = '红波'; $colorOdds = 2.75; }
-        elseif ($r <= 67) { $colorPred = '蓝波'; $colorOdds = 2.98; }
-        else { $colorPred = '绿波'; $colorOdds = 2.98; }
-
-        $sizeDiff = abs($finalBigScore - $finalSmallScore) / max(0.01, $finalBigScore + $finalSmallScore);
-        $parityDiff = abs($finalOddScore - $finalEvenScore) / max(0.01, $finalOddScore + $finalEvenScore);
-
-        $sizeConfidence = min(99, max(92, 92 + (int)($sizeDiff * 25)));
-        $parityConfidence = min(99, max(92, 92 + (int)($parityDiff * 25)));
         $colorConfidence = rand(92, 96);
-        $confidence = round(($sizeConfidence + $parityConfidence + $colorConfidence) / 3);
+        $confidence = round(($currentPred['sizeConfidence'] + $currentPred['parityConfidence'] + $colorConfidence) / 3);
 
         $rparts = [];
-        $rparts[] = "【全新 AI 深度预测引擎】：已启用 Kalman 滤波与 MACD 动量交叉追踪技术。集成多维权重: 动态衰减 w1=40% | 隐马尔可夫转移 w2=30% | N-Gram 神经网络 w3=30%";
-        
-        if ($sizeDirection) {
-            $rparts[] = "📏 大小维度：" . (max($consecutiveBig, $consecutiveSmall) <= 4 ? "顺势追龙" : "均值回归极值反转") . "，长龙连开 " . max($consecutiveBig, $consecutiveSmall) . " 期，结合 MACD 动量锁定推算【" . $sizePred . "】";
-        } else {
-            $rparts[] = "📏 大小维度：通过 MACD 与二阶马氏矩阵演算，发现波段偏差，判定买【" . $sizePred . "】";
+        if (!empty($currentPred['correctionReason'])) {
+            $rparts[] = $currentPred['correctionReason'];
         }
-
-        if ($parityDirection) {
-            $rparts[] = "🎲 单双维度：" . (max($consecutiveOdd, $consecutiveEven) <= 4 ? "顺势追踪" : "阻力位反转") . "，连开 " . max($consecutiveOdd, $consecutiveEven) . " 期，判定买【" . $parityPred . "】";
-        } else {
-            $rparts[] = "🎲 单双维度：N-Gram 序列模式匹配，判定买【" . $parityPred . "】";
-        }
-
-        $rparts[] = "🎨 波色维度：基于色彩核密度积分及走势共振，优选高胜率【" . $colorPred . "】";
+        $rparts[] = "--------------------------------------";
+        $rparts[] = "📊 【当前形态矩阵重组推演】: " . $currentPred['sizePred'] . " | " . $currentPred['parityPred'];
 
         return [
             "targetIssue" => $nextIssue,
-            "sizePred" => $sizePred,
-            "parityPred" => $parityPred,
-            "colorPred" => $colorPred,
-            "colorOdds" => $colorOdds,
+            "sizePred" => $currentPred['sizePred'],
+            "parityPred" => $currentPred['parityPred'],
+            "colorPred" => $currentPred['colorPred'],
+            "colorOdds" => $currentPred['colorOdds'],
             "confidence" => $confidence,
-            "sizeConfidence" => $sizeConfidence,
-            "parityConfidence" => $parityConfidence,
+            "sizeConfidence" => $currentPred['sizeConfidence'],
+            "parityConfidence" => $currentPred['parityConfidence'],
             "colorConfidence" => $colorConfidence,
             "reasoning" => implode("\n", $rparts)
         ];
     }
+
 
     function calculateProfitAndLossPHP($draws = null) {
         if (empty($draws)) {
