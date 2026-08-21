@@ -166,7 +166,7 @@ if ($action === 'set_webhook') {
     
     $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https" : "https";
     $host = $_SERVER['HTTP_HOST'] ?? 'wenge9529.serv00.net';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/telegram_bot.php';
+    $script = '/telegram_bot.php'; // 强制绑定到 telegram_bot.php，不能用 $_SERVER['SCRIPT_NAME']
     $defaultWebhookUrl = "{$protocol}://{$host}{$script}";
 
     $webhookUrl = !empty($_REQUEST['webhookUrl']) ? $_REQUEST['webhookUrl'] : $defaultWebhookUrl;
@@ -201,6 +201,43 @@ if ($action === 'webhook_info') {
         'result' => $res['result'] ?? null,
         'raw' => $res
     ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// 路由 8: 保存配置文件到 .env (支持 PHP 独立模式下直接在页面配置)
+if ($action === 'save_config') {
+    $envFile = __DIR__ . '/.env';
+    $envData = "";
+    
+    // Read existing env to preserve other keys if any
+    $existingEnv = [];
+    if (file_exists($envFile)) {
+        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            if (strpos(trim($line), '#') === 0) continue;
+            if (strpos($line, '=') !== false) {
+                list($name, $value) = explode('=', $line, 2);
+                $existingEnv[trim($name)] = trim($value);
+            }
+        }
+    }
+
+    if (isset($_POST['TELEGRAM_BOT_TOKEN'])) {
+        $existingEnv['TELEGRAM_BOT_TOKEN'] = trim($_POST['TELEGRAM_BOT_TOKEN']);
+    }
+    if (isset($_POST['TELEGRAM_CHAT_ID'])) {
+        $existingEnv['TELEGRAM_CHAT_ID'] = trim($_POST['TELEGRAM_CHAT_ID']);
+    }
+    
+    foreach ($existingEnv as $k => $v) {
+        $envData .= "{$k}={$v}\n";
+    }
+
+    if (file_put_contents($envFile, $envData) !== false) {
+        echo "<script>alert('配置保存成功！Token已写入 .env 文件。请点击一键绑定 Webhook 激活机器人！'); window.location.href='index.php';</script>";
+    } else {
+        echo "<script>alert('配置保存失败！请检查文件写入权限。'); window.history.back();</script>";
+    }
     exit;
 }
 

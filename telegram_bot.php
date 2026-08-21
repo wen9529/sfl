@@ -75,7 +75,7 @@ if ($action === 'set_webhook') {
     // 自动判断并生成默认 Webhook URL
     $protocol = "https";
     $host = $_SERVER['HTTP_HOST'] ?? 'wenge9529.serv00.net';
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/telegram_bot.php';
+    $script = '/telegram_bot.php'; // 强制绑定到 telegram_bot.php，避免 shared hosting 附加 public_html 等目录
     $defaultWebhookUrl = "{$protocol}://{$host}{$script}";
 
     $webhookUrl = !empty($requestParams['webhookUrl']) ? $requestParams['webhookUrl'] : $defaultWebhookUrl;

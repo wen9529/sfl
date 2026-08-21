@@ -100,28 +100,39 @@
         <!-- Telegram Bot Settings Section -->
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
             <div class="flex items-center gap-2 text-sky-400 font-bold text-base border-b border-slate-800 pb-3">
-                <i class="fab fa-telegram text-xl"></i> Telegram Bot 参数配置 (PHP)
+                <i class="fab fa-telegram text-xl"></i> Telegram Bot 参数与配置 (PHP)
             </div>
 
-            <form action="telegram_bot.php?action=send" method="POST" class="space-y-4 text-xs">
+            <form action="api.php?action=save_config" method="POST" class="space-y-4 text-xs">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-slate-300 font-semibold mb-1">Bot Token</label>
-                        <input type="password" name="botToken" value="<?php echo htmlspecialchars($config['telegram_bot_token']); ?>" placeholder="输入从 @BotFather 获取的 Token" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+                        <input type="password" name="TELEGRAM_BOT_TOKEN" value="<?php echo htmlspecialchars($config['telegram_bot_token']); ?>" placeholder="输入从 @BotFather 获取的 Token" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
                     </div>
                     <div>
                         <label class="block text-slate-300 font-semibold mb-1">Target Chat ID</label>
-                        <input type="text" name="chatId" value="<?php echo htmlspecialchars($config['telegram_chat_id']); ?>" placeholder="如 @channel_name 或 -100xxx" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
+                        <input type="text" name="TELEGRAM_CHAT_ID" value="<?php echo htmlspecialchars($config['telegram_chat_id']); ?>" placeholder="如 @channel_name 或 -100xxx" class="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono">
                     </div>
                 </div>
 
+                <div class="flex items-center justify-between">
+                    <span class="text-slate-400">提示: 首次使用请务必先保存配置，Token 将写入 .env 文件中永久生效。</span>
+                    <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg flex items-center gap-2">
+                        <i class="fas fa-save"></i> 保存全局配置
+                    </button>
+                </div>
+            </form>
+
+            <form action="telegram_bot.php?action=send" method="POST" class="mt-4 pt-4 border-t border-slate-800 space-y-4 text-xs">
+                <input type="hidden" name="botToken" value="<?php echo htmlspecialchars($config['telegram_bot_token']); ?>">
+                <input type="hidden" name="chatId" value="<?php echo htmlspecialchars($config['telegram_chat_id']); ?>">
                 <div>
                     <label class="block text-slate-300 font-semibold mb-1">自定义广播消息</label>
                     <textarea name="customText" rows="3" placeholder="输入广播文案..." class="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono"><b>🎰 澳门三分六合彩 (PHP测试)</b>&#10;最新开奖已被系统推送。</textarea>
                 </div>
 
                 <div class="flex items-center justify-between">
-                    <span class="text-slate-400">提示: 可将 <code>cron.php</code> 添加到 Serv00 的 Cron Jobs，每3分钟自动发送</span>
+                    <span class="text-slate-400">可将 <code>cron.php</code> 添加到 Serv00 的 Cron Jobs，每分钟自动发送</span>
                     <button type="submit" class="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl transition-all shadow-lg flex items-center gap-2">
                         <i class="fas fa-paper-plane"></i> 发送 Telegram 广播
                     </button>
