@@ -15,7 +15,10 @@ import {
   ChevronUp,
   Link as LinkIcon,
   Globe,
-  Bot
+  Bot,
+  ShieldCheck,
+  Copy,
+  Check
 } from 'lucide-react';
 
 interface LogItem {
@@ -69,6 +72,13 @@ export const TelegramPanel: React.FC = () => {
     success: boolean;
     message: string;
   } | null>(null);
+  const [copiedCron, setCopiedCron] = useState<boolean>(false);
+
+  const copyCronCmd = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCron(true);
+    setTimeout(() => setCopiedCron(false), 3000);
+  };
 
   // Fetch status and logs
   const fetchStatus = async () => {
@@ -423,6 +433,92 @@ export const TelegramPanel: React.FC = () => {
             <span>{webhookResult.message}</span>
           </div>
         )}
+      </div>
+
+      {/* Serv00 Reboot Keepalive & Guard Panel */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
+          <ShieldCheck className="w-5 h-5 text-emerald-400" />
+          <h2 className="font-bold text-base text-slate-100">
+            Serv00 掉线/重启保活 Guard 防护方案
+            <span className="text-xs text-emerald-400 font-normal ml-2 font-mono">【解决运行 1-2 天后挂掉无反应问题】</span>
+          </h2>
+        </div>
+
+        <div className="space-y-3 text-xs">
+          <div className="bg-amber-950/30 border border-amber-800/40 p-3.5 rounded-xl text-amber-200 leading-relaxed space-y-1">
+            <span className="font-bold text-amber-400 flex items-center gap-1">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              为什么 Serv00 上的 Bot 运行 1-2 天后会没有反应？
+            </span>
+            <p className="text-[11px] opacity-90">
+              Serv00 免费虚拟主机为了维护服务器稳定，会<b>定期重启 FreeBSD 系统或清理内存后台进程</b>。PM2 进程在 Serv00 重启后无法自动随系统开机，导致 PM2 / Node 进程掉线，Bot 随之挂掉无反应。
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+            {/* Guard Solution 1: Node PM2 Mode Crontab */}
+            <div className="bg-slate-950/70 border border-slate-800 p-4 rounded-xl space-y-3 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-100 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-sky-400" />
+                    方案 A：Node.js PM2 保活 Cron 守护
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    自动复活
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  在 Serv00 终端执行下方命令，每 2 分钟自动检查 Node / PM2 是否存活。一旦检测到 Serv00 重启或进程挂掉，即刻<b>自动拉起服务并重绑 Webhook</b>！
+                </p>
+                <pre className="text-[10px] font-mono bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-sky-300 whitespace-pre-wrap break-all leading-relaxed">
+                  chmod +x keepalive.sh && (crontab -l 2&gt;/dev/null; echo "*/2 * * * * cd $(pwd) &amp;&amp; PORT=25432 ./keepalive.sh &gt; /dev/null 2&gt;&amp;1") | crontab -
+                </pre>
+              </div>
+
+              <button
+                onClick={() => copyCronCmd(`chmod +x keepalive.sh && (crontab -l 2>/dev/null | grep -v "keepalive.sh"; echo "*/2 * * * * cd $(pwd) && PORT=25432 ./keepalive.sh > /dev/null 2>&1") | crontab -`)}
+                className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                {copiedCron ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedCron ? '已复制 PM2 保活 Cron 指令！' : '复制 PM2 保活 Cron 一键指令'}
+              </button>
+            </div>
+
+            {/* Guard Solution 2: Native PHP Mode */}
+            <div className="bg-slate-950/70 border border-slate-800 p-4 rounded-xl space-y-3 flex flex-col justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-100 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    方案 B：原生 PHP 零后台无挂掉方案
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    永不掉线
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  PHP 环境无后台常驻进程，完全按需响应。仅需在 Serv00 Crontab 中添加如下命令，每分钟触发开奖检测：
+                </p>
+                <pre className="text-[10px] font-mono bg-slate-900 p-2.5 rounded-lg border border-slate-800 text-emerald-300 whitespace-pre-wrap break-all leading-relaxed">
+                  * * * * * cd /home/用户名/domains/域名/public_html && php cron.php &gt; /dev/null 2&gt;&amp;1
+                </pre>
+                <p className="text-[10px] text-slate-500">
+                  💡 Serv00 控制面板提醒：别忘了在 [Usługi dodatkowe] -&gt; [Uruchamianie własnych programów] 中设为 <b>Włączone (Enabled)</b> 开启后台支持。
+                </p>
+              </div>
+
+              <button
+                onClick={() => copyCronCmd(`(crontab -l 2>/dev/null | grep -v "cron.php"; echo "* * * * * cd $(pwd) && php cron.php > /dev/null 2>&1") | crontab -`)}
+                className="w-full py-2 px-3 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                {copiedCron ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedCron ? '已复制 PHP Cron 指令！' : '复制 PHP Cron 一键指令'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Real-time Push Logs */}
