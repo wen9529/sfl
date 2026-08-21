@@ -625,24 +625,26 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   let parityDragonStrength = 1.0;
 
   const maxConsecutiveSize = Math.max(consecutiveBig, consecutiveSmall);
-  if (maxConsecutiveSize >= 5) {
-    if (maxConsecutiveSize <= 7) {
-      dragonSizeAction = consecutiveBig > 0 ? 'REVERSE_SMALL' : 'REVERSE_BIG';
-      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 4) * 0.15;
-    } else {
+  if (maxConsecutiveSize >= 3) {
+    if (maxConsecutiveSize <= 5) {
+      // 3-5连 顺势追龙
       dragonSizeAction = consecutiveBig > 0 ? 'FOLLOW_BIG' : 'FOLLOW_SMALL';
-      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 7) * 0.15;
+      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 2) * 0.12;
+    } else {
+      // 6连以上 强行斩龙 (均值回归极限)
+      dragonSizeAction = consecutiveBig > 0 ? 'REVERSE_SMALL' : 'REVERSE_BIG';
+      sizeDragonStrength = 1.0 + (maxConsecutiveSize - 5) * 0.15;
     }
   }
 
   const maxConsecutiveParity = Math.max(consecutiveOdd, consecutiveEven);
-  if (maxConsecutiveParity >= 5) {
-    if (maxConsecutiveParity <= 7) {
-      dragonParityAction = consecutiveOdd > 0 ? 'REVERSE_EVEN' : 'REVERSE_ODD';
-      parityDragonStrength = 1.0 + (maxConsecutiveParity - 4) * 0.15;
-    } else {
+  if (maxConsecutiveParity >= 3) {
+    if (maxConsecutiveParity <= 5) {
       dragonParityAction = consecutiveOdd > 0 ? 'FOLLOW_ODD' : 'FOLLOW_EVEN';
-      parityDragonStrength = 1.0 + (maxConsecutiveParity - 7) * 0.15;
+      parityDragonStrength = 1.0 + (maxConsecutiveParity - 2) * 0.12;
+    } else {
+      dragonParityAction = consecutiveOdd > 0 ? 'REVERSE_EVEN' : 'REVERSE_ODD';
+      parityDragonStrength = 1.0 + (maxConsecutiveParity - 5) * 0.15;
     }
   }
 
@@ -914,13 +916,36 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
   }
 
   // ==========================================
+  // 6.8. 卡尔曼滤波与 MACD 动量交叉追踪 (Kalman & MACD)
+  // ==========================================
+  let macdBigTrend = 0;
+  let macdOddTrend = 0;
+  if (recentDraws.length >= 26) {
+    let ema12B = 0, ema26B = 0;
+    let ema12O = 0, ema26O = 0;
+    for (let i = 25; i >= 0; i--) {
+      const c = recentDraws[i].openCode.split(',').map(Number);
+      if (c.length >= 7 && c[6] !== 49) {
+        const isB = c[6] >= 25 ? 1 : 0;
+        const isO = c[6] % 2 !== 0 ? 1 : 0;
+        ema12B = (isB - ema12B) * (2 / 13) + ema12B;
+        ema26B = (isB - ema26B) * (2 / 27) + ema26B;
+        ema12O = (isO - ema12O) * (2 / 13) + ema12O;
+        ema26O = (isO - ema26O) * (2 / 27) + ema26O;
+      }
+    }
+    macdBigTrend = ema12B - ema26B;
+    macdOddTrend = ema12O - ema26O;
+  }
+
+  // ==========================================
   // 7. 多维混合模型加权决策计算 (Comprehensive Weighting)
   // ==========================================
-  let finalBigScore = (integratedSizeProb) * weightMultiHorizon + pBig * weightMarkov + (nGramSizeProb) * weightNGram;
-  let finalSmallScore = (1.0 - integratedSizeProb) * weightMultiHorizon + pSmall * weightMarkov + (1.0 - nGramSizeProb) * weightNGram;
+  let finalBigScore = (integratedSizeProb) * weightMultiHorizon + pBig * weightMarkov + (nGramSizeProb) * weightNGram + (macdBigTrend > 0 ? 0.05 : -0.02);
+  let finalSmallScore = (1.0 - integratedSizeProb) * weightMultiHorizon + pSmall * weightMarkov + (1.0 - nGramSizeProb) * weightNGram + (macdBigTrend < 0 ? 0.05 : -0.02);
 
-  let finalOddScore = (integratedParityProb) * weightMultiHorizon + pOdd * weightMarkov + (nGramParityProb) * weightNGram;
-  let finalEvenScore = (1.0 - integratedParityProb) * weightMultiHorizon + pEven * weightMarkov + (1.0 - nGramParityProb) * weightNGram;
+  let finalOddScore = (integratedParityProb) * weightMultiHorizon + pOdd * weightMarkov + (nGramParityProb) * weightNGram + (macdOddTrend > 0 ? 0.05 : -0.02);
+  let finalEvenScore = (1.0 - integratedParityProb) * weightMultiHorizon + pEven * weightMarkov + (1.0 - nGramParityProb) * weightNGram + (macdOddTrend < 0 ? 0.05 : -0.02);
 
   finalBigScore += biasSizeOffset;
   finalSmallScore -= biasSizeOffset;
