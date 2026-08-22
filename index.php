@@ -131,8 +131,15 @@
                     <textarea name="customText" rows="3" placeholder="输入广播文案..." class="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono"><b>🎰 澳门三分六合彩 (PHP测试)</b>&#10;最新开奖已被系统推送。</textarea>
                 </div>
 
-                <div class="flex items-center justify-between">
-                    <span class="text-slate-400">可将 <code>cron.php</code> 添加到 Serv00 的 Cron Jobs，每分钟自动发送</span>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <a href="cron.php?force=1" target="_blank" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all shadow-lg flex items-center gap-1.5">
+                            <i class="fas fa-magic"></i> 立即测试推送 1 期推演报告到频道
+                        </a>
+                        <a href="api.php?action=logs" target="_blank" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all border border-slate-700 flex items-center gap-1">
+                            <i class="fas fa-list-alt"></i> 查看推送日志
+                        </a>
+                    </div>
                     <button type="submit" class="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl transition-all shadow-lg flex items-center gap-2">
                         <i class="fas fa-paper-plane"></i> 发送 Telegram 广播
                     </button>
