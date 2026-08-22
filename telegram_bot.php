@@ -18,19 +18,28 @@ $inputRaw = file_get_contents('php://input');
 $jsonParams = json_decode($inputRaw, true) ?: [];
 $requestParams = array_merge($_GET, $_POST, $jsonParams);
 
+// 记录收到的 Webhook 请求日志，便于随时排查
+if (!empty($inputRaw)) {
+    file_put_contents(__DIR__ . '/bot_debug.log', "[" . date('Y-m-d H:i:s') . "] " . $inputRaw . "\n", FILE_APPEND);
+}
+
 $action = isset($requestParams['action']) ? $requestParams['action'] : '';
 
 // 1. Webhook 入口 (处理 Telegram 推送过来的消息与按钮 Callback)
-if (empty($action) && (!empty($jsonParams['message']) || !empty($jsonParams['callback_query']))) {
-    $token = $config['telegram_bot_token'];
+if (!empty($jsonParams['message']) || !empty($jsonParams['callback_query']) || !empty($jsonParams['edited_message'])) {
+    $token = $config['telegram_bot_token'] ?? '8902856799:AAGo7TyPEfp9bWRYidb_dbpUQJxjU7gkm3s';
     if (!$token) {
         http_response_code(200);
         echo "OK";
         exit;
     }
 
-    // 先同步调用 Bot 指令与按钮处理模块，完成 Telegram API 响应
-    handleTelegramBotCommandPHP($jsonParams, $token);
+    try {
+        // 调用 Bot 指令与按钮处理模块
+        handleTelegramBotCommandPHP($jsonParams, $token);
+    } catch (Throwable $e) {
+        file_put_contents(__DIR__ . '/bot_debug.log', "[" . date('Y-m-d H:i:s') . "] Error: " . $e->getMessage() . "\n", FILE_APPEND);
+    }
 
     http_response_code(200);
     echo "OK";
