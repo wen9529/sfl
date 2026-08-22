@@ -36,7 +36,7 @@ foreach ($envPaths as $envPath) {
 
 return [
     // Telegram Bot 配置 (优先读取环境变量/.env，若无则使用预设回退值)
-    'telegram_bot_token' => $_ENV['TELEGRAM_BOT_TOKEN'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '7412781515:AAED_2CMyv9U-TfP3S_VvKx2C5D6z-IskS8',
+    'telegram_bot_token' => $_ENV['TELEGRAM_BOT_TOKEN'] ?? getenv('TELEGRAM_BOT_TOKEN') ?: '8902856799:AAGo7TyPEfp9bWRYidb_dbpUQJxjU7gkm3s',
     'telegram_chat_id'   => $_ENV['TELEGRAM_CHAT_ID'] ?? getenv('TELEGRAM_CHAT_ID') ?: '-1002334007303',
     'telegram_admin_id'  => $_ENV['TELEGRAM_ADMIN_ID'] ?? getenv('TELEGRAM_ADMIN_ID') ?: '6147494498',
     
