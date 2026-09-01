@@ -3,6 +3,10 @@
  * 澳门三分六合彩 · Telegram Bot Webhook 主入口 (模块化架构)
  */
 
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 date_default_timezone_set('Asia/Shanghai');
 header('Content-Type: application/json; charset=utf-8');
 
@@ -18,9 +22,20 @@ $inputRaw = file_get_contents('php://input');
 $jsonParams = json_decode($inputRaw, true) ?: [];
 $requestParams = array_merge($_GET, $_POST, $jsonParams);
 
+// 直接在浏览器或 curl 访问时显示健康信息
+if (empty($inputRaw) && empty($_GET['action']) && empty($_POST['action'])) {
+    echo json_encode([
+        'status' => 'online',
+        'service' => 'Macau 3Min MarkSix Telegram Bot Webhook',
+        'time' => date('Y-m-d H:i:s'),
+        'bot_configured' => !empty($config['telegram_bot_token'])
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
 // 记录收到的 Webhook 请求日志，便于随时排查
 if (!empty($inputRaw)) {
-    file_put_contents(__DIR__ . '/bot_debug.log', "[" . date('Y-m-d H:i:s') . "] " . $inputRaw . "\n", FILE_APPEND);
+    @file_put_contents(__DIR__ . '/bot_debug.log', "[" . date('Y-m-d H:i:s') . "] " . $inputRaw . "\n", FILE_APPEND);
 }
 
 $action = isset($requestParams['action']) ? $requestParams['action'] : '';
@@ -38,7 +53,7 @@ if (!empty($jsonParams['message']) || !empty($jsonParams['callback_query']) || !
         // 调用 Bot 指令与按钮处理模块
         handleTelegramBotCommandPHP($jsonParams, $token);
     } catch (Throwable $e) {
-        file_put_contents(__DIR__ . '/bot_debug.log', "[" . date('Y-m-d H:i:s') . "] Error: " . $e->getMessage() . "\n", FILE_APPEND);
+        @file_put_contents(__DIR__ . '/bot_debug.log', "[" . date('Y-m-d H:i:s') . "] Error: " . $e->getMessage() . "\n", FILE_APPEND);
     }
 
     http_response_code(200);

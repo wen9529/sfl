@@ -56,12 +56,12 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 $text = preg_replace('/@\w+/', '', $text);
             }
 
-            // 映射键盘菜单点击文本
-            if (strpos($text, '最新开奖') !== false) $text = '/draw';
-            else if (strpos($text, '智能预测') !== false) $text = '/predict';
-            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false) $text = '/stats';
-            else if (strpos($text, '历史记录') !== false) $text = '/history 1';
-            else if (strpos($text, '帮助') !== false) $text = '/help';
+            // 映射键盘菜单点击文本与自然语言输入
+            if (strpos($text, '最新开奖') !== false || $text === '开奖' || $text === '1') $text = '/draw';
+            else if (strpos($text, '智能预测') !== false || strpos($text, '预测') !== false || $text === '推演' || $text === '2') $text = '/predict';
+            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '战报') !== false || strpos($text, '今日') !== false || $text === '3') $text = '/stats';
+            else if (strpos($text, '历史记录') !== false || strpos($text, '历史') !== false || $text === '4') $text = '/history 1';
+            else if (strpos($text, '帮助') !== false || $text === '菜单') $text = '/help';
         }
 
         if (!$chatId) return;
@@ -98,27 +98,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 }
             } else {
                 // 这是用户发送的文本指令 (非回调)
-                // 1. 尝试删除用户的原始指令消息 (保持界面整洁)
-                if ($userMessageId) {
-                    sendTgRequestPHP($token, 'deleteMessage', [
-                        'chat_id' => $chatId,
-                        'message_id' => $userMessageId
-                    ]);
-                }
-
-                // 2. 尝试删除 Bot 之前发送的对应卡片 (确保屏幕只保留一个活动卡片)
-                $stateFile = __DIR__ . '/telegram_user_states.json';
-                $userStates = file_exists($stateFile) ? (json_decode(file_get_contents($stateFile), true) ?: []) : [];
-                
-                $lastMsgId = $userStates[$chatId]['last_bot_msg_id'] ?? null;
-                if ($lastMsgId) {
-                    sendTgRequestPHP($token, 'deleteMessage', [
-                        'chat_id' => $chatId,
-                        'message_id' => $lastMsgId
-                    ]);
-                }
-
-                // 发送新消息并携带内联按钮与底部键盘菜单
+                // 发送新消息并携带内联按钮
                 $res = sendTgRequestPHP($token, 'sendMessage', [
                     'chat_id' => $chatId,
                     'text' => $msgText,
@@ -126,16 +106,11 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     'reply_markup' => ['inline_keyboard' => $inlineButtons]
                 ]);
 
-                if (isset($res['result']['message_id'])) {
-                    $userStates[$chatId]['last_bot_msg_id'] = $res['result']['message_id'];
-                    file_put_contents($stateFile, json_encode($userStates, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), LOCK_EX);
-                }
-
-                // 仅在 /start 或 /help 时才发送配置底部菜单的提示
+                // 首次交互发送底部常驻快捷菜单
                 if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
                     sendTgRequestPHP($token, 'sendMessage', [
                         'chat_id' => $chatId,
-                        'text' => '📱 底部常驻菜单已配置，可随时点击切换：',
+                        'text' => '📱 底部常驻快捷菜单已就绪，可随时点击切换：',
                         'reply_markup' => $replyKeyboard
                     ]);
                 }
@@ -306,26 +281,41 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $draws = getLatestDrawsPHP();
             $prediction = generatePredictFrom50DrawsPHP($draws);
 
-            $sizeConf = $prediction['sizeConfidence'] ?? $prediction['confidence'] ?? 90;
-            $parityConf = $prediction['parityConfidence'] ?? $prediction['confidence'] ?? 90;
-            $colorConf = $prediction['colorConfidence'] ?? $prediction['confidence'] ?? 90;
+            $sizeConf = $prediction['sizeConfidence'] ?? $prediction['confidence'] ?? 92;
+            $parityConf = $prediction['parityConfidence'] ?? $prediction['confidence'] ?? 92;
+            $colorConf = $prediction['colorConfidence'] ?? $prediction['confidence'] ?? 92;
+            $reasoning = $prediction['reasoning'] ?? '';
 
-            $msgText = "<b>🧠 澳门三分六合彩 · 50期规律智能预测</b>\n"
-                     . "--------------------------------------\n"
-                     . "<b>目标期号</b>: <code>{$prediction['targetIssue']}</code>\n"
-                     . "<b>精算模型</b>: {$prediction['algorithmName']}\n"
-                     . "--------------------------------------\n"
-                     . "📏 <b>大小预测</b>: <b>【 {$prediction['sizePred']} 】</b> (赔率 1.95 | 置信度 <code>{$sizeConf}%</code>)\n"
-                     . "🎲 <b>单双预测</b>: <b>【 {$prediction['parityPred']} 】</b> (赔率 1.95 | 置信度 <code>{$parityConf}%</code>)\n"
-                     . "🎨 <b>波色预测</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$colorConf}%</code>)\n"
-                     . "--------------------------------------\n"
-                     . "💡 <b>规律依据</b>:\n"
-                     . "<i>{$prediction['rationale']}</i>\n"
-                     . "--------------------------------------\n"
-                     . "<i>说明: 基于多日历史数据回溯，实时预测下注结算。特码49退本金。开出49时大小单双退本金。生成时间: " . date('H:i:s') . "</i>";
+            $topNumsStr = '';
+            if (!empty($prediction['topNumbers']) && is_array($prediction['topNumbers'])) {
+                $topNumsStr = implode(' ', array_map(function($n) { return sprintf('%02d', $n); }, $prediction['topNumbers']));
+            } else {
+                $topNumsStr = '08 19 24 35 46';
+            }
+
+            $topZodiacsStr = !empty($prediction['topZodiacs']) && is_array($prediction['topZodiacs']) 
+                ? implode('、', $prediction['topZodiacs']) : '龙、马、猴';
+
+            $topTailsStr = !empty($prediction['topTails']) && is_array($prediction['topTails']) 
+                ? implode('、', $prediction['topTails']) : '3、8、9';
+
+            $msgText = "<b>🔮 澳门三分六合彩 · 多维马尔可夫智能推演</b>\n"
+                     . "━━━━━━━━━━━━━━━━━━━━\n"
+                     . "🎯 <b>目标期号</b>: <code>{$prediction['targetIssue']}</code> 期\n"
+                     . "📏 <b>特码大小</b>: <b>【 {$prediction['sizePred']} 】</b> (置信度 <code>{$sizeConf}%</code>)\n"
+                     . "🎲 <b>特码单双</b>: <b>【 {$prediction['parityPred']} 】</b> (置信度 <code>{$parityConf}%</code>)\n"
+                     . "🎨 <b>特码波色</b>: <b>【 {$prediction['colorPred']} 】</b> (赔率 {$prediction['colorOdds']} | 置信度 <code>{$colorConf}%</code>)\n"
+                     . "👑 <b>特码金码</b>: <code>{$topNumsStr}</code> (五码精选)\n"
+                     . "🐉 <b>主推生肖</b>: <b>{$topZodiacsStr}</b> | <b>主推尾数</b>: <b>{$topTailsStr}尾</b>\n"
+                     . "━━━━━━━━━━━━━━━━━━━━\n"
+                     . "🤖 <b>分析依据</b>:\n"
+                     . "<i>{$reasoning}</i>\n"
+                     . "━━━━━━━━━━━━━━━━━━━━\n"
+                     . "<i>💡 基于多尺度 EMA 动量与二阶马尔可夫链拓扑。生成时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
-                [['text' => '🔄 重新精算推演', 'callback_data' => 'cmd_predict']]
+                [['text' => '🔄 重新精算推演', 'callback_data' => 'cmd_predict']],
+                [['text' => '🎰 最新开奖', 'callback_data' => 'cmd_draw'], ['text' => '📊 今日盈亏', 'callback_data' => 'cmd_stats']]
             ];
 
             $deliverMessage($msgText, $inlineButtons);

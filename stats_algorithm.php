@@ -524,8 +524,7 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
     }
 }
 
-
-}
+if (!function_exists('calculateProfitAndLossPHP')) {
     function calculateProfitAndLossPHP($draws = null) {
         if (empty($draws)) {
             $draws = getLatestDrawsPHP();
@@ -625,6 +624,7 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             "maxStreak" => $maxStreak
         ];
     }
+}
 
 if (!function_exists('generateAutomatedPushReportPHP')) {
     /**
@@ -744,7 +744,6 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "📢 <b>官方预测频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "@sanfencc66") . "\n"
              . "<i>💡 每分钟自动捕获官方开奖，秒级演算推演下一期</i>";
     }
-}
 }
 
 if (!function_exists('getWeeklyProfitAndLossPHP')) {
@@ -904,6 +903,6 @@ if (!function_exists('updatePredictionsDBPHP')) {
             $db = array_slice($db, -1000, null, true);
         }
 
-        file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        @file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
     }
 }

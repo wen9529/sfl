@@ -80,11 +80,27 @@ if (!function_exists('sendTgRequestPHP')) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        if (defined('CURL_IPRESOLVE_V4')) {
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+        }
         $result = curl_exec($ch);
+        $err = curl_error($ch);
         curl_close($ch);
-        return json_decode($result, true) ?: [];
+
+        $logFile = __DIR__ . '/bot_debug.log';
+        if ($err) {
+            @file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] cURL Error ({$method}): {$err}\n", FILE_APPEND);
+        }
+
+        $decoded = json_decode($result, true) ?: [];
+        if (!empty($decoded) && isset($decoded['ok']) && $decoded['ok'] === false) {
+            @file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] TG Error ({$method}): " . ($decoded['description'] ?? $result) . "\n", FILE_APPEND);
+        }
+
+        return $decoded;
     }
 }
 
