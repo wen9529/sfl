@@ -28,14 +28,77 @@ async function startServer() {
     }
   }
 
-  // Telegram Bot 配置状态 (增加与 config.php 相同的硬编码默认值作为回退)
+  // Telegram Bot 配置状态 (默认使用真实配置)
   let telegramConfig = {
-    botToken: process.env.TELEGRAM_BOT_TOKEN || "7412781515:AAED_2CMyv9U-TfP3S_VvKx2C5D6z-IskS8",
-    chatId: process.env.TELEGRAM_CHAT_ID || "-1002334007303",
+    botToken: process.env.TELEGRAM_BOT_TOKEN || "8902856799:AAGo7TyPEfp9bWRYidb_dbpUQJxjU7gkm3s",
+    chatId: process.env.TELEGRAM_CHAT_ID || "-1004476090475",
     adminId: process.env.TELEGRAM_ADMIN_ID || "6147494498",
     autoPushEnabled: true,
     parseMode: "HTML",
   };
+
+  // Telegram Long Polling 引擎 (未绑定 Webhook 时自动全天候轮询秒回)
+  let pollingActive = false;
+  let pollingOffset = 0;
+
+  async function startTelegramPolling() {
+    const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+    if (!token || pollingActive) return;
+
+    // 检查当前是否已绑定有效 Webhook
+    try {
+      const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
+      const infoData = await infoRes.json();
+      if (infoData.ok && infoData.result?.url) {
+        console.log(`[Telegram] 当前已存在 Webhook 绑定: ${infoData.result.url}`);
+        return;
+      }
+    } catch (e) {}
+
+    pollingActive = true;
+    console.log(`[Telegram Polling] 启动 Long Polling 实时监听守护线程...`);
+
+    const pollLoop = async () => {
+      while (pollingActive) {
+        try {
+          const currentToken = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+          if (!currentToken) {
+            await new Promise(r => setTimeout(r, 5000));
+            continue;
+          }
+
+          const res = await fetch(`https://api.telegram.org/bot${currentToken}/getUpdates?offset=${pollingOffset}&timeout=20`, {
+            signal: AbortSignal.timeout(30000)
+          });
+          const data = await res.json();
+          if (data.ok && Array.isArray(data.result)) {
+            for (const update of data.result) {
+              pollingOffset = update.update_id + 1;
+              try {
+                writeTelegramLog("Polling收到消息", "success", `收到更新 ID: ${update.update_id}`, JSON.stringify(update, null, 2));
+                await processTelegramMessage(currentToken, update, currentDraws);
+              } catch (err: any) {
+                console.error("[Telegram Polling] 处理消息出错:", err);
+                writeTelegramLog("Polling处理异常", "error", `处理消息出错: ${err.message}`, err.stack || "");
+              }
+            }
+          } else if (data.error_code === 409) {
+            console.log("[Telegram Polling] 检测到 Webhook 已激活，暂停 Polling 模式");
+            pollingActive = false;
+            break;
+          }
+        } catch (e: any) {
+          // 网络抖动时等待 2 秒后继续轮询
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+    };
+
+    pollLoop();
+  }
+
+  // 启动 Polling 监听
+  startTelegramPolling();
 
   // 每 1 分钟自动拉取最新开奖记录，检查期号是否有更新，仅在新期号产生时才预测并推送
   setInterval(async () => {
@@ -204,9 +267,35 @@ async function startServer() {
       const tgData = await tgRes.json();
 
       if (tgData.ok) {
-        return res.json({ success: true, result: tgData.result });
+        return res.json({ success: true, result: tgData.result, pollingActive });
       } else {
         return res.status(400).json({ success: false, error: tgData.description || "获取 Webhook 状态失败" });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // API 5.3: Telegram 删除 Webhook 并切换至 Long Polling
+  app.post("/api/telegram/delete-webhook", async (req, res) => {
+    try {
+      const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+      if (!token) {
+        return res.status(400).json({ success: false, error: "未配置 TELEGRAM_BOT_TOKEN" });
+      }
+
+      const tgRes = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`, {
+        method: "POST",
+        signal: AbortSignal.timeout(8000),
+      });
+      const tgData = await tgRes.json();
+
+      if (tgData.ok) {
+        writeTelegramLog("清除Webhook", "success", "成功清除 Webhook，已转入 Long Polling 实时轮询模式", JSON.stringify(tgData, null, 2));
+        startTelegramPolling();
+        return res.json({ success: true, message: "Webhook 已清除，已自动启动实时 Polling 监听！", telegramResponse: tgData });
+      } else {
+        return res.status(400).json({ success: false, error: tgData.description || "清除 Webhook 失败" });
       }
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err.message });
