@@ -343,40 +343,44 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             $roiSign = $pnl['roi'] >= 0 ? "+" : "";
             $profitEmoji = $pnl['netProfit'] >= 0 ? "📈" : "📉";
 
-            $msgText = "{$titleText}\n"
-                     . "━━━━━━━━━━━━━━━━━━━━\n"
-                     . "{$statusText}\n"
-                     . "💰 <b>今日总下注</b>: <code>" . number_format($pnl['totalBet']) . " USDT</code> (3 USDT/期)\n"
-                     . "🎁 <b>今日总派彩</b>: <code>" . number_format($pnl['totalPayout'], 2) . " USDT</code>\n"
-                     . "📈 <b>累计净盈亏</b>: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT {$profitEmoji}</b> (ROI: {$roiSign}{$pnl['roi']}%)\n"
-                     . "📉 <b>今日最大回撤</b>: <code>" . ($pnl['maxLoss'] > 0 ? "-" . number_format($pnl['maxLoss'], 2) : "0") . " USDT</code>\n"
-                     . "🚀 <b>今日最高盈利</b>: <code>+" . number_format($pnl['maxProfit'], 2) . " USDT</code>\n"
-                     . "━━━━━━━━━━━━━━━━━━━━\n"
-                     . "📏 <b>特码大小胜率</b>: <code>{$pnl['sizeHitRate']}%</code> (赔率 1.95)\n"
-                     . "🎲 <b>特码单双胜率</b>: <code>{$pnl['parityHitRate']}%</code> (赔率 1.95)\n"
-                     . "🎨 <b>特码波色胜率</b>: <code>{$pnl['colorHitRate']}%</code> (红2.75 / 蓝绿2.98)\n"
-                     . "🎯 <b>三项全中(大满贯)</b>: <b>{$pnl['allThreeHits']} 期 🔥</b>\n"
-                     . "🏆 <b>今日最长连红</b>: <b>{$pnl['maxStreak']} 连红 🔥</b>\n"
-                     . "━━━━━━━━━━━━━━━━━━━━\n"
-                     . "📅 <b>近 7 天每日盈亏走势</b>:\n";
-
+            $dailyLines = [];
             $totalWeekBet = 0;
-            $totalWeekProfit = 0;
+            $totalWeekPayout = 0;
 
             foreach ($weeklyData as $day) {
                 $net = $day['netProfit'];
                 $sign = $net >= 0 ? "+" : "";
                 $emoji = $net >= 0 ? "📈" : "📉";
-                $msgText .= "• <b>{$day['displayDate']}</b>: 投入 <code>{$day['totalBet']}U</code> | 净盈亏 <b>{$sign}{$net}U {$emoji}</b> (共 {$day['rounds']} 期)\n";
+                $isTodayTag = !empty($day['isToday']) ? " <b>[今日进行中]</b>" : "";
+                $roiText = $day['roi'] >= 0 ? "+{$day['roi']}%" : "{$day['roi']}%";
+                $payout = isset($day['totalPayout']) ? $day['totalPayout'] : ($day['totalBet'] + $net);
+
+                $dailyLines[] = "• <b>{$day['displayDate']}</b>{$isTodayTag}\n  投入: <code>{$day['totalBet']}U</code> | 派彩: <code>{$payout}U</code>\n  净盈亏: <b>{$sign}{$net} USDT {$emoji}</b> (ROI: <code>{$roiText}</code> | {$day['rounds']}期)";
                 $totalWeekBet += $day['totalBet'];
-                $totalWeekProfit += $net;
+                $totalWeekPayout += $payout;
             }
 
+            $totalWeekProfit = $totalWeekPayout - $totalWeekBet;
             $totalSign = $totalWeekProfit >= 0 ? "+" : "";
-            $msgText .= "🏆 <b>7天累计净盈亏</b>: <b>{$totalSign}" . number_format($totalWeekProfit, 2) . " USDT " . ($totalWeekProfit >= 0 ? "🚀" : "💧") . "</b>\n"
+            $weekRoi = $totalWeekBet > 0 ? round(($totalWeekProfit / $totalWeekBet) * 100, 2) : 0;
+            $weekRoiSign = $weekRoi >= 0 ? "+{$weekRoi}%" : "{$weekRoi}%";
+
+            $msgText = "<b>📊 澳门三分六合彩 · 每周每日盈亏明细统计报表</b>\n"
+                     . "━━━━━━━━━━━━━━━━━━━━\n"
+                     . "📅 <b>近 7 天每日盈亏明细看板</b>:\n\n"
+                     . implode("\n\n", $dailyLines) . "\n\n"
+                     . "━━━━━━━━━━━━━━━━━━━━\n"
+                     . "💰 <b>7天总累计投入</b>: <code>" . number_format($totalWeekBet) . " USDT</code>\n"
+                     . "🎁 <b>7天总累计派彩</b>: <code>" . number_format($totalWeekPayout, 2) . " USDT</code>\n"
+                     . "🏆 <b>7天总净盈亏</b>: <b>{$totalSign}" . number_format($totalWeekProfit, 2) . " USDT 🚀</b> (周均回报率: <b>{$weekRoiSign}</b>)\n"
+                     . "━━━━━━━━━━━━━━━━━━━━\n"
+                     . "🎯 <b>今日实时核心战报 (第 {$pnl['predictedRounds']}/430 期)</b>:\n"
+                     . "• 特码大小胜率: <code>{$pnl['sizeHitRate']}%</code> | 单双胜率: <code>{$pnl['parityHitRate']}%</code> | 波色胜率: <code>{$pnl['colorHitRate']}%</code>\n"
+                     . "• 大满贯期数: <b>{$pnl['allThreeHits']} 期 🔥</b> | 最长连红: <b>{$pnl['maxStreak']} 连红 🔥</b>\n"
+                     . "• 今日最大回撤: <code>" . ($pnl['maxLoss'] > 0 ? "-" . number_format($pnl['maxLoss'], 2) : "0") . " USDT</code> | 最高盈利: <code>+" . number_format($pnl['maxProfit'], 2) . " USDT</code>\n"
                      . "━━━━━━━━━━━━━━━━━━━━\n"
                      . "📢 <b>官方预测频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "@sanfencc66") . "\n"
-                     . "💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
+                     . "💡 <i>规则：每天480期，前50期积累基准，后430期下注结算(3U/期)。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
                 [['text' => '🔄 刷新盈亏统计', 'callback_data' => 'cmd_stats']],

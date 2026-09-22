@@ -1,5 +1,5 @@
 import { MacauDrawItem, getZodiac, getWaveColor } from './lotteryEngine';
-import { generate50DrawsPrediction, calculateProfitAndLoss } from './statsAlgorithm';
+import { generate50DrawsPrediction, calculateProfitAndLoss, getWeeklyProfitAndLoss } from './statsAlgorithm';
 
 export async function processTelegramMessage(
   token: string,
@@ -241,43 +241,44 @@ ${lines.join('\n\n')}
     return;
   }
 
-  if (text.startsWith('/stats') || text.startsWith('/profit') || text.startsWith('/pnl')) {
+  if (text.startsWith('/stats') || text.startsWith('/profit') || text.startsWith('/pnl') || text.includes('盈亏') || text.includes('每周')) {
+    const weeklyData = getWeeklyProfitAndLoss(draws);
     const pnl = calculateProfitAndLoss(draws);
 
-    let titleText = '<b>📊 澳门三分六合彩 · 430期预测下注回测盈亏报表</b>';
-    let statusText = '';
+    const dailyLines = weeklyData.dailyList.map(item => {
+      const profitSign = item.netProfit >= 0 ? `+${item.netProfit.toFixed(2)}` : `${item.netProfit.toFixed(2)}`;
+      const roiSign = item.roi >= 0 ? `+${item.roi.toFixed(2)}%` : `${item.roi.toFixed(2)}%`;
+      const flag = item.netProfit >= 0 ? '📈' : '📉';
+      const isTodayTag = item.isToday ? ' <b>[今日进行中]</b>' : '';
+      return `• <b>${item.displayDate}</b>${isTodayTag}\n  投入: <code>${item.totalBet}U</code> | 派彩: <code>${item.totalPayout}U</code>\n  净盈亏: <b>${profitSign} USDT ${flag}</b> (ROI: <code>${roiSign}</code> | ${item.rounds}期)`;
+    }).join('\n\n');
 
-    if (pnl.predictedRounds === 0) {
-      statusText = `⏳ <b>今日进度</b>: 算法数据积累中 (已完成 <b>${pnl.dayDrawNum}/50</b> 期基准开奖)，第 51 期开奖开启智能预测下注结算。`;
-    } else if (!pnl.isCompleted) {
-      titleText = '<b>📊 澳门三分六合彩 · 今日实时累计盈亏报表</b>';
-      statusText = `<b>当前进度</b>: 已累计预测下注 <code>${pnl.predictedRounds}</code> 期 (已开出第 ${pnl.dayDrawNum} 期，目标 430 期)`;
-    } else {
-      titleText = '<b>📊 澳门三分六合彩 · 全天 430 期盈亏结算报表</b>';
-      statusText = `<b>当前进度</b>: <code>今日 430 期预测结算完毕 ✅</code>`;
-    }
+    const totalNetSign = weeklyData.totalNetProfit >= 0 ? `+${weeklyData.totalNetProfit.toFixed(2)}` : `${weeklyData.totalNetProfit.toFixed(2)}`;
+    const totalRoiSign = weeklyData.totalRoi >= 0 ? `+${weeklyData.totalRoi.toFixed(2)}%` : `${weeklyData.totalRoi.toFixed(2)}%`;
 
     const msg = `
-${titleText}
---------------------------------------
-${statusText}
-<b>今天最高亏损</b>: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toLocaleString()}` : '0'} USDT</code>
-<b>今天最高盈利</b>: <code>+${pnl.maxProfit.toLocaleString()} USDT</code>
-<b>累计净盈亏</b>: <b>${pnl.netProfit >= 0 ? '+' : ''}${pnl.netProfit.toLocaleString()} USDT 📈</b>
-<b>投资回报率</b>: <b>+${pnl.roi}% 🔥 (ROI)</b>
---------------------------------------
-📏 <b>大小命中率</b>: <code>${pnl.sizeHitRate}%</code> (赔率 1.95)
-🎲 <b>单双命中率</b>: <code>${pnl.parityHitRate}%</code> (赔率 1.95)
-🎨 <b>波色命中率</b>: <code>${pnl.colorHitRate}%</code> (红2.75 / 蓝绿2.98)
-🎯 <b>三项全中(大满贯)</b>: <b>${pnl.allThreeHits} 期 🔥</b>
-🏆 <b>历史最长连红</b>: <b>${pnl.maxStreak} 连红 🔥</b>
---------------------------------------
-📢 <b>官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
-💡 <i>说明：每天480期，前50期积累为开奖基准，后430期下注结算。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
+<b>📊 澳门三分六合彩 · 每周每日盈亏明细统计报表</b>
+━━━━━━━━━━━━━━━━━━━━
+📅 <b>近 7 天每日盈亏明细看板</b>:
+
+${dailyLines}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 <b>7天总累计投入</b>: <code>${weeklyData.totalBet.toLocaleString()} USDT</code>
+🎁 <b>7天总累计派彩</b>: <code>${weeklyData.totalPayout.toLocaleString()} USDT</code>
+🏆 <b>7天总净盈亏</b>: <b>${totalNetSign} USDT 🚀</b> (周均回报率: <b>${totalRoiSign}</b>)
+━━━━━━━━━━━━━━━━━━━━
+🎯 <b>今日实时核心战报 (第 ${pnl.predictedRounds}/430 期)</b>:
+• 特码大小胜率: <code>${pnl.sizeHitRate}%</code> | 单双胜率: <code>${pnl.parityHitRate}%</code> | 波色胜率: <code>${pnl.colorHitRate}%</code>
+• 大满贯期数: <b>${pnl.allThreeHits} 期 🔥</b> | 最长连红: <b>${pnl.maxStreak} 连红 🔥</b>
+• 今日最大回撤: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss}` : '0'} USDT</code> | 最高盈利: <code>+${pnl.maxProfit} USDT</code>
+━━━━━━━━━━━━━━━━━━━━
+📢 <b>官方预测频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || "@sanfencc66"}
+💡 <i>规则：每天480期，前50期积累基准，后430期下注结算(3U/期)。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
 `.trim();
 
     const inlineButtons = [
-      [{ text: '🔄 刷新盈亏结算', callback_data: 'cmd_stats' }],
+      [{ text: '🔄 刷新每周每日盈亏', callback_data: 'cmd_stats' }],
     ];
 
     await deliverMessage(msg, inlineButtons);
