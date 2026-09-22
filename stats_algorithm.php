@@ -573,6 +573,13 @@ if (!function_exists('calculateProfitAndLossPHP')) {
                 continue;
             }
 
+            // 期号后3位:
+            $issueNum = intval(substr((string)$exp, -3));
+            // 每天前 50 期为数据积累基准期，不参与下注与结算！
+            if ($issueNum <= 50) {
+                continue;
+            }
+
             $predictedRounds++;
             $bet = isset($record['bet']) ? $record['bet'] : 3;
             $totalBet += $bet;
@@ -757,13 +764,14 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
             $db = json_decode(file_get_contents($dbFile), true) ?: [];
         }
 
-        // 构造过去 7 天的每日初始结构
+        // 构造过去 7 天的每日初始结构 (按北京时间)
         $dailyMap = [];
         for ($i = 6; $i >= 0; $i--) {
-            $dStr = date('Ymd', strtotime("-{$i} days"));
+            $timestamp = time() - ($i * 86400);
+            $dStr = date('Ymd', $timestamp);
             $dailyMap[$dStr] = [
                 'date' => $dStr,
-                'displayDate' => date('m月d日', strtotime("-{$i} days")),
+                'displayDate' => date('m月d日', $timestamp),
                 'rounds' => 0,
                 'totalBet' => 0,
                 'totalPayout' => 0,
@@ -775,6 +783,10 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
         foreach ($db as $exp => $record) {
             if (empty($record['openCode'])) {
                 continue;
+            }
+            $issueNum = intval(substr((string)$exp, -3));
+            if ($issueNum <= 50) {
+                continue; // 排除前50期基准积累期
             }
             $dateKey = substr((string)$exp, 0, 8);
             if (isset($dailyMap[$dateKey])) {
@@ -816,6 +828,9 @@ if (!function_exists('updatePredictionsDBPHP')) {
         // 1. 回填历史开奖并结算
         foreach ($draws as $draw) {
             $exp = $draw['expect'];
+            $issueNum = intval(substr((string)$exp, -3));
+            $isBaseline = ($issueNum <= 50);
+
             if (!isset($db[$exp])) {
                 // 如果库里没有，尝试回溯生成当时的预测，以保证数据完整性 (冷启动或漏期时)
                 $idx = array_search($draw, $draws);
@@ -833,7 +848,7 @@ if (!function_exists('updatePredictionsDBPHP')) {
                         'parityConfidence' => $pred['parityConfidence'] ?? 90,
                         'colorConfidence' => $pred['colorConfidence'] ?? 90,
                         'reasoning' => $pred['reasoning'] ?? '',
-                        'bet' => 3,
+                        'bet' => $isBaseline ? 0 : 3,
                         'openCode' => ''
                     ];
                 }
@@ -841,42 +856,54 @@ if (!function_exists('updatePredictionsDBPHP')) {
             
             if (isset($db[$exp]) && empty($db[$exp]['openCode'])) {
                 $db[$exp]['openCode'] = $draw['openCode'];
+                $db[$exp]['bet'] = $isBaseline ? 0 : 3;
                 
                 $codes = array_map('intval', explode(',', $draw['openCode']));
-                if (count($codes) >= 7 && $codes[6] !== 49) {
+                if (count($codes) >= 7) {
                     $special = $codes[6];
-                    $actualSize = $special >= 25 ? '大' : '小';
-                    $actualParity = $special % 2 !== 0 ? '单' : '双';
-                    $actualWave = getWaveColorPHP($special);
-                    
-                    $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
-                    $actualColor = $waveMap[$actualWave] ?? '红波';
+                    if ($isBaseline) {
+                        $db[$exp]['payout'] = 0;
+                        $db[$exp]['sizeHit'] = false;
+                        $db[$exp]['parityHit'] = false;
+                        $db[$exp]['colorHit'] = false;
+                    } else if ($special !== 49) {
+                        $actualSize = $special >= 25 ? '大' : '小';
+                        $actualParity = $special % 2 !== 0 ? '单' : '双';
+                        $actualWave = getWaveColorPHP($special);
+                        
+                        $waveMap = ['red' => '红波', 'blue' => '蓝波', 'green' => '绿波'];
+                        $actualColor = $waveMap[$actualWave] ?? '红波';
 
-                    $sizeHit = ($db[$exp]['sizePred'] === $actualSize);
-                    $parityHit = ($db[$exp]['parityPred'] === $actualParity);
-                    $colorHit = ($db[$exp]['colorPred'] === $actualColor);
+                        $sizeHit = ($db[$exp]['sizePred'] === $actualSize);
+                        $parityHit = ($db[$exp]['parityPred'] === $actualParity);
+                        $colorHit = ($db[$exp]['colorPred'] === $actualColor);
 
-                    $db[$exp]['sizeHit'] = $sizeHit;
-                    $db[$exp]['parityHit'] = $parityHit;
-                    $db[$exp]['colorHit'] = $colorHit;
+                        $db[$exp]['sizeHit'] = $sizeHit;
+                        $db[$exp]['parityHit'] = $parityHit;
+                        $db[$exp]['colorHit'] = $colorHit;
 
-                    $payout = 0;
-                    if ($sizeHit) $payout += 1.95;
-                    if ($parityHit) $payout += 1.95;
-                    if ($colorHit) $payout += floatval($db[$exp]['colorOdds'] ?? 2.75);
+                        $payout = 0;
+                        if ($sizeHit) $payout += 1.95;
+                        if ($parityHit) $payout += 1.95;
+                        if ($colorHit) $payout += floatval($db[$exp]['colorOdds'] ?? 2.75);
 
-                    $db[$exp]['payout'] = round($payout, 2);
-                } else if (isset($codes[6]) && $codes[6] === 49) {
-                    $db[$exp]['sizeHit'] = true;
-                    $db[$exp]['parityHit'] = true;
-                    $db[$exp]['colorHit'] = false;
-                    $db[$exp]['payout'] = 2.0; 
+                        $db[$exp]['payout'] = round($payout, 2);
+                    } else {
+                        // 特码 49 和局退本金 2U，绿波赔 2.98U
+                        $colorHit = ($db[$exp]['colorPred'] === '绿波');
+                        $db[$exp]['sizeHit'] = false;
+                        $db[$exp]['parityHit'] = false;
+                        $db[$exp]['colorHit'] = $colorHit;
+                        $db[$exp]['payout'] = round(2.0 + ($colorHit ? 2.98 : 0), 2);
+                    }
                 }
             }
         }
 
         // 2. 生成下一期预测并保存
         if (!isset($db[$nextIssue])) {
+            $nextIssueNum = intval(substr((string)$nextIssue, -3));
+            $isNextBaseline = ($nextIssueNum <= 50);
             $prediction = generatePredictFrom50DrawsPHP($draws);
             $db[$nextIssue] = [
                 'targetIssue' => $nextIssue,
@@ -892,17 +919,23 @@ if (!function_exists('updatePredictionsDBPHP')) {
                 'topZodiacs' => $prediction['topZodiacs'] ?? [],
                 'topTails' => $prediction['topTails'] ?? [],
                 'reasoning' => $prediction['reasoning'],
-                'bet' => 3,
+                'bet' => $isNextBaseline ? 0 : 3,
                 'openCode' => '',
             ];
         }
 
-        // 清理旧数据，保留最近1000条
+        // 清理旧数据，保留最近1500条
         ksort($db);
         if (count($db) > 1500) {
             $db = array_slice($db, -1000, null, true);
         }
 
         @file_put_contents($dbFile, json_encode($db, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    }
+}
+
+if (!function_exists('syncPredictionsDatabasePHP')) {
+    function syncPredictionsDatabasePHP($draws) {
+        return updatePredictionsDBPHP($draws);
     }
 }

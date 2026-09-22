@@ -1108,6 +1108,10 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
   let predictedRounds = 0;
 
   for (const d of sortedToday) {
+    const issueMatch = String(d.expect).match(/\d{3}$/);
+    const issueNum = issueMatch ? parseInt(issueMatch[0], 10) : 0;
+    if (issueNum <= 50) continue; // 前50期为数据积累基准期，不参与下注与结算
+
     const idx = draws.findIndex(item => item.expect === d.expect);
     if (idx === -1) continue;
     const historyContext = draws.slice(idx + 1);
@@ -1133,7 +1137,11 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
     let colorHit = false;
 
     if (special === 49) {
-      payout += 2; // refund
+      if (pred.colorPred === '绿波') {
+        colorHit = true;
+        payout += 2.98;
+      }
+      payout += 2; // 大小和单双和局退还 2 USDT
     } else {
       if (pred.sizePred === sizeText) {
         sizeHit = true;
@@ -1143,10 +1151,10 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
         parityHit = true;
         payout += 1.95;
       }
-    }
-    if (pred.colorPred === waveName) {
-      colorHit = true;
-      payout += (waveName === '红波' ? 2.75 : 2.98);
+      if (pred.colorPred === waveName) {
+        colorHit = true;
+        payout += (waveName === '红波' ? 2.75 : 2.98);
+      }
     }
 
     totalBet += bet;
