@@ -67,7 +67,8 @@ async function startServer() {
             continue;
           }
 
-          const res = await fetch(`https://api.telegram.org/bot${currentToken}/getUpdates?offset=${pollingOffset}&timeout=20`, {
+          const allowedUpdatesParam = encodeURIComponent(JSON.stringify(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"]));
+          const res = await fetch(`https://api.telegram.org/bot${currentToken}/getUpdates?offset=${pollingOffset}&timeout=20&allowed_updates=${allowedUpdatesParam}`, {
             signal: AbortSignal.timeout(30000)
           });
           const data = await res.json();
