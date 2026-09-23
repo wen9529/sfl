@@ -83,6 +83,7 @@ export async function processTelegramMessage(
             parse_mode: 'HTML',
             reply_markup: { inline_keyboard: inlineButtons },
           }),
+          signal: AbortSignal.timeout(8000),
         });
         const editJson = await editRes.json();
         if (editJson.ok) return;
@@ -97,6 +98,7 @@ export async function processTelegramMessage(
           parse_mode: 'HTML',
           reply_markup: { inline_keyboard: inlineButtons },
         }),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (!isCallback) {
@@ -108,6 +110,7 @@ export async function processTelegramMessage(
             text: '📱 底部常驻菜单已配置，可随时点击切换：',
             reply_markup: replyKeyboard,
           }),
+          signal: AbortSignal.timeout(8000),
         });
       }
     } catch (err) {

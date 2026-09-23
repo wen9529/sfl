@@ -63,6 +63,12 @@ export const TelegramPanel: React.FC = () => {
     reportText?: string;
   } | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [pollingStatus, setPollingStatus] = useState<{
+    lastHeartbeat?: string;
+    aliveSecondsAgo?: number;
+    sessionId?: number;
+  } | null>(null);
+  const [isRestartingPolling, setIsRestartingPolling] = useState<boolean>(false);
 
   // Webhook Binding state
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
@@ -107,11 +113,29 @@ export const TelegramPanel: React.FC = () => {
         setConfig(data.config);
         setLastPushedIssue(data.lastPushedIssue || '无记录');
         setLogs(data.logs || []);
+        if (data.pollingStatus) {
+          setPollingStatus(data.pollingStatus);
+        }
       }
     } catch (err) {
       console.error('Failed to load Telegram status:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRestartPolling = async () => {
+    setIsRestartingPolling(true);
+    try {
+      const res = await fetch('/api/telegram/restart-polling', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchStatus();
+      }
+    } catch (e) {
+      console.error('Failed to restart polling:', e);
+    } finally {
+      setIsRestartingPolling(false);
     }
   };
 
@@ -259,6 +283,31 @@ export const TelegramPanel: React.FC = () => {
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping mr-2" />
                   每 60 秒轮询开奖接口，若出现新期号即刻预测并推送
                 </span>
+              </div>
+
+              <div className="space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800 sm:col-span-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-slate-400 block font-medium">24/7 守护轮询 (Long Polling 实时秒回)</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      运行中 (心跳正常)
+                    </span>
+                    {pollingStatus?.lastHeartbeat && (
+                      <span className="text-slate-400 text-[11px] font-mono">
+                        最后心跳: {pollingStatus.lastHeartbeat} ({pollingStatus.aliveSecondsAgo ?? 0}s 前)
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={handleRestartPolling}
+                  disabled={isRestartingPolling}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRestartingPolling ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
+                  {isRestartingPolling ? '正在拉起守护进程...' : '⚡ 一键强制自愈重启'}
+                </button>
               </div>
             </div>
           </div>

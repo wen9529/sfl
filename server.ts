@@ -28,7 +28,8 @@ async function startServer() {
     }
   }
 
-  // Telegram Bot 配置状态 (默认使用真实配置)
+  // Telegram Bot 配置状态 (支持持久化到 telegram_config.json)
+  const configPath = path.join(process.cwd(), "telegram_config.json");
   let telegramConfig = {
     botToken: process.env.TELEGRAM_BOT_TOKEN || "8902856799:AAGo7TyPEfp9bWRYidb_dbpUQJxjU7gkm3s",
     chatId: process.env.TELEGRAM_CHAT_ID || "-1004476090475",
@@ -36,45 +37,78 @@ async function startServer() {
     autoPushEnabled: true,
     parseMode: "HTML",
   };
-
-  // Telegram Long Polling 引擎 (未绑定 Webhook 时自动全天候轮询秒回)
-  let pollingActive = false;
-  let pollingOffset = 0;
-
-  async function startTelegramPolling() {
-    const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
-    if (!token || pollingActive) return;
-
-    // 检查当前是否已绑定有效 Webhook
+  if (fs.existsSync(configPath)) {
     try {
-      const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
-      const infoData = await infoRes.json();
-      if (infoData.ok && infoData.result?.url) {
-        console.log(`[Telegram] 当前已存在 Webhook 绑定: ${infoData.result.url}`);
-        return;
-      }
+      const savedCfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      telegramConfig = { ...telegramConfig, ...savedCfg };
+    } catch (e) {
+      console.error("读取 telegram_config.json 失败:", e);
+    }
+  }
+
+  // Telegram Long Polling 全天候自愈守护引擎
+  let pollingOffset = 0;
+  let lastPollingHeartbeat = Date.now();
+  let currentPollSessionId = 0;
+  let pollingAbortController: AbortController | null = null;
+
+  async function startTelegramPolling(forceRestart = false) {
+    const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) return;
+
+    // 分配新的会话 ID，使旧循环自动终结
+    currentPollSessionId++;
+    const thisSessionId = currentPollSessionId;
+
+    if (pollingAbortController) {
+      try {
+        pollingAbortController.abort();
+      } catch (e) {}
+    }
+    pollingAbortController = new AbortController();
+
+    // 启动前主动清除冲突 Webhook（不清空积压消息），确保 getUpdates 顺畅直连
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, {
+        method: "POST",
+        signal: AbortSignal.timeout(5000),
+      });
     } catch (e) {}
 
-    pollingActive = true;
-    console.log(`[Telegram Polling] 启动 Long Polling 实时监听守护线程...`);
+    lastPollingHeartbeat = Date.now();
+    console.log(`[Telegram Polling] 启动/重启 Long Polling 实时监听守护线程 (Session #${thisSessionId})...`);
+    writeTelegramLog("Polling启动", "success", `启动 Telegram 守护轮询 (Session #${thisSessionId})`, "主动清除冲突 Webhook 并进入 24/7 监听模式");
 
     const pollLoop = async () => {
-      while (pollingActive) {
+      while (thisSessionId === currentPollSessionId) {
+        lastPollingHeartbeat = Date.now();
         try {
           const currentToken = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
           if (!currentToken) {
-            await new Promise(r => setTimeout(r, 5000));
+            await new Promise((r) => setTimeout(r, 5000));
             continue;
           }
 
-          const allowedUpdatesParam = encodeURIComponent(JSON.stringify(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"]));
-          const res = await fetch(`https://api.telegram.org/bot${currentToken}/getUpdates?offset=${pollingOffset}&timeout=20&allowed_updates=${allowedUpdatesParam}`, {
-            signal: AbortSignal.timeout(30000)
-          });
+          const allowedUpdatesParam = encodeURIComponent(
+            JSON.stringify(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"])
+          );
+
+          const res = await fetch(
+            `https://api.telegram.org/bot${currentToken}/getUpdates?offset=${pollingOffset}&timeout=15&allowed_updates=${allowedUpdatesParam}`,
+            {
+              signal: AbortSignal.timeout(25000),
+            }
+          );
+
+          if (thisSessionId !== currentPollSessionId) break;
+
           const data = await res.json();
+          lastPollingHeartbeat = Date.now();
+
           if (data.ok && Array.isArray(data.result)) {
             for (const update of data.result) {
-              pollingOffset = update.update_id + 1;
+              if (thisSessionId !== currentPollSessionId) break;
+              pollingOffset = Math.max(pollingOffset, update.update_id + 1);
               try {
                 writeTelegramLog("Polling收到消息", "success", `收到更新 ID: ${update.update_id}`, JSON.stringify(update, null, 2));
                 await processTelegramMessage(currentToken, update, currentDraws);
@@ -84,13 +118,22 @@ async function startServer() {
               }
             }
           } else if (data.error_code === 409) {
-            console.log("[Telegram Polling] 检测到 Webhook 已激活，暂停 Polling 模式");
-            pollingActive = false;
-            break;
+            console.warn("[Telegram Polling] 检测到 409 冲突，自动清除 Webhook 并在 3 秒后重试...");
+            try {
+              await fetch(`https://api.telegram.org/bot${currentToken}/deleteWebhook?drop_pending_updates=false`, {
+                method: "POST",
+                signal: AbortSignal.timeout(5000),
+              });
+            } catch (e) {}
+            await new Promise((r) => setTimeout(r, 3000));
+          } else {
+            // 其他 API 返回，短暂停顿后继续
+            await new Promise((r) => setTimeout(r, 2000));
           }
         } catch (e: any) {
-          // 网络抖动时等待 2 秒后继续轮询
-          await new Promise(r => setTimeout(r, 2000));
+          if (thisSessionId !== currentPollSessionId) break;
+          // 网络抖动或超时后等待 1.5 秒后继续，不中断守护循环
+          await new Promise((r) => setTimeout(r, 1500));
         }
       }
     };
@@ -100,6 +143,22 @@ async function startServer() {
 
   // 启动 Polling 监听
   startTelegramPolling();
+
+  // Watchdog 看门狗：每 10 秒巡检一次 Polling 线程存活情况，如果超过 35 秒无心跳则强制重连
+  setInterval(async () => {
+    const now = Date.now();
+    const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
+    if (token && now - lastPollingHeartbeat > 35000) {
+      console.warn(`[Telegram Watchdog] 检测到 Polling 心跳停滞 (${Math.round((now - lastPollingHeartbeat) / 1000)}s)，自动唤醒重启...`);
+      writeTelegramLog("看门狗自动自愈", "error", "检测到 Polling 心跳停滞，自动重启监听进程", `无心跳时间: ${Math.round((now - lastPollingHeartbeat) / 1000)}秒`);
+      startTelegramPolling(true);
+    }
+  }, 10000);
+
+  // Keep-Alive 心跳：每 20 秒自检一次，保持 Node.js 事件循环活跃并防止空闲休眠
+  setInterval(() => {
+    fetch(`http://127.0.0.1:${PORT}/api/lottery/stats`, { signal: AbortSignal.timeout(3000) }).catch(() => {});
+  }, 20000);
 
   // 每 1 分钟自动拉取最新开奖记录，检查期号是否有更新，仅在新期号产生时才预测并推送
   setInterval(async () => {
@@ -268,7 +327,11 @@ async function startServer() {
       const tgData = await tgRes.json();
 
       if (tgData.ok) {
-        return res.json({ success: true, result: tgData.result, pollingActive });
+        return res.json({
+          success: true,
+          result: tgData.result,
+          pollingActive: (Date.now() - lastPollingHeartbeat) < 40000,
+        });
       } else {
         return res.status(400).json({ success: false, error: tgData.description || "获取 Webhook 状态失败" });
       }
@@ -405,7 +468,57 @@ async function startServer() {
         autoPushEnabled: telegramConfig.autoPushEnabled,
       },
       lastPushedIssue,
+      pollingStatus: {
+        lastHeartbeat: new Date(lastPollingHeartbeat).toLocaleTimeString("zh-CN"),
+        aliveSecondsAgo: Math.round((Date.now() - lastPollingHeartbeat) / 1000),
+        sessionId: currentPollSessionId,
+      },
       logs: logs.slice(0, 30), // 返回最近30条记录
+    });
+  });
+
+  // API 10.1: 更新 Telegram 配置并持久化
+  app.post("/api/telegram/config", (req, res) => {
+    try {
+      const { botToken, chatId, adminId, autoPushEnabled } = req.body;
+      if (botToken !== undefined && typeof botToken === "string" && botToken.trim()) {
+        telegramConfig.botToken = botToken.trim();
+      }
+      if (chatId !== undefined && typeof chatId === "string") {
+        telegramConfig.chatId = chatId.trim();
+      }
+      if (adminId !== undefined && typeof adminId === "string") {
+        telegramConfig.adminId = adminId.trim();
+      }
+      if (autoPushEnabled !== undefined) {
+        telegramConfig.autoPushEnabled = !!autoPushEnabled;
+      }
+
+      fs.writeFileSync(configPath, JSON.stringify(telegramConfig, null, 2), "utf8");
+      startTelegramPolling(true);
+
+      res.json({
+        success: true,
+        message: "配置已保存并已自动重启 Telegram 守护轮询！",
+        config: {
+          botToken: telegramConfig.botToken.length > 10 ? telegramConfig.botToken.substring(0, 10) + "..." : "未配置",
+          chatId: telegramConfig.chatId,
+          adminId: telegramConfig.adminId,
+          autoPushEnabled: telegramConfig.autoPushEnabled,
+        },
+      });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // API 10.2: 手动强制重启 Polling 监听守护进程
+  app.post("/api/telegram/restart-polling", (req, res) => {
+    startTelegramPolling(true);
+    res.json({
+      success: true,
+      message: "已成功发送重启指令，Telegram 守护进程已重新拉起！",
+      sessionId: currentPollSessionId,
     });
   });
 
