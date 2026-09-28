@@ -289,11 +289,13 @@ ${lines.join('\n\n')}
       const roiSign = item.roi >= 0 ? `+${item.roi.toFixed(2)}%` : `${item.roi.toFixed(2)}%`;
       const flag = item.netProfit >= 0 ? '📈' : '📉';
       const isTodayTag = item.isToday ? ' <b>[今日进行中]</b>' : '';
-      return `• <b>${item.displayDate}</b>${isTodayTag}\n  投入: <code>${item.totalBet}U</code> | 派彩: <code>${item.totalPayout}U</code>\n  净盈亏: <b>${profitSign} USDT ${flag}</b> (ROI: <code>${roiSign}</code> | ${item.rounds}期)`;
+      return `• <b>${item.displayDate}</b>${isTodayTag}\n  投入: <code>${item.totalBet}U</code> | 派彩: <code>${item.totalPayout.toFixed(2)}U</code>\n  净盈亏: <b>${profitSign} USDT ${flag}</b> (ROI: <code>${roiSign}</code> | ${item.rounds}期)`;
     }).join('\n\n');
 
     const totalNetSign = weeklyData.totalNetProfit >= 0 ? `+${weeklyData.totalNetProfit.toFixed(2)}` : `${weeklyData.totalNetProfit.toFixed(2)}`;
     const totalRoiSign = weeklyData.totalRoi >= 0 ? `+${weeklyData.totalRoi.toFixed(2)}%` : `${weeklyData.totalRoi.toFixed(2)}%`;
+    const todayNetSign = pnl.netProfit >= 0 ? `+${pnl.netProfit.toFixed(2)}` : `${pnl.netProfit.toFixed(2)}`;
+    const todayRoiSign = pnl.roi >= 0 ? `+${pnl.roi.toFixed(2)}%` : `${pnl.roi.toFixed(2)}%`;
 
     const msg = `
 <b>📊 澳门三分六合彩 · 每周每日盈亏明细统计报表</b>
@@ -304,13 +306,15 @@ ${dailyLines}
 
 ━━━━━━━━━━━━━━━━━━━━
 💰 <b>7天总累计投入</b>: <code>${weeklyData.totalBet.toLocaleString()} USDT</code>
-🎁 <b>7天总累计派彩</b>: <code>${weeklyData.totalPayout.toLocaleString()} USDT</code>
+🎁 <b>7天总累计派彩</b>: <code>${weeklyData.totalPayout.toFixed(2)} USDT</code>
 🏆 <b>7天总净盈亏</b>: <b>${totalNetSign} USDT 🚀</b> (周均回报率: <b>${totalRoiSign}</b>)
 ━━━━━━━━━━━━━━━━━━━━
 🎯 <b>今日实时核心战报 (第 ${pnl.predictedRounds}/430 期)</b>:
+• 今日投入: <code>${pnl.totalBet} USDT</code> | 累计派彩: <code>${pnl.totalPayout.toFixed(2)} USDT</code>
+• 今日净盈亏: <b>${todayNetSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: <b>${todayRoiSign}</b>)
 • 特码大小胜率: <code>${pnl.sizeHitRate}%</code> | 单双胜率: <code>${pnl.parityHitRate}%</code> | 波色胜率: <code>${pnl.colorHitRate}%</code>
 • 大满贯期数: <b>${pnl.allThreeHits} 期 🔥</b> | 最长连红: <b>${pnl.maxStreak} 连红 🔥</b>
-• 今日最大回撤: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss}` : '0'} USDT</code> | 最高盈利: <code>+${pnl.maxProfit} USDT</code>
+• 今日最大回撤: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toFixed(2)}` : '0.00'} USDT</code> | 最高盈利: <code>+${pnl.maxProfit.toFixed(2)} USDT</code>
 ━━━━━━━━━━━━━━━━━━━━
 📢 <b>官方预测频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || "@sanfencc66"}
 💡 <i>规则：每天480期，前50期积累基准，后430期下注结算(3U/期)。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>

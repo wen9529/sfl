@@ -1,11 +1,11 @@
 import React from 'react';
-import { Sparkles, BarChart2, Radio, RefreshCw, Send } from 'lucide-react';
+import { Sparkles, BarChart2, Radio, RefreshCw, Send, LineChart } from 'lucide-react';
 
 interface HeaderProps {
   onSyncLiveApi?: () => void;
   isSyncing?: boolean;
-  activeTab: 'analytics' | 'prediction' | 'telegram';
-  setActiveTab: (tab: 'analytics' | 'prediction' | 'telegram') => void;
+  activeTab: 'analytics' | 'prediction' | 'pnl' | 'telegram';
+  setActiveTab: (tab: 'analytics' | 'prediction' | 'pnl' | 'telegram') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -78,6 +78,17 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
             下一期智能推演预测
+          </button>
+          <button
+            onClick={() => setActiveTab('pnl')}
+            className={`px-5 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'pnl'
+                ? 'border-rose-500 text-rose-400 bg-rose-500/10 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <LineChart className="w-4 h-4 text-emerald-400" />
+            430期量化盈亏看板
           </button>
           <button
             onClick={() => setActiveTab('telegram')}

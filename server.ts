@@ -5,7 +5,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { generate50MacauDraws, getLatestDraws, MacauDrawItem } from "./src/server/lotteryEngine";
-import { analyze50Draws, generate50DrawsPrediction, calculateProfitAndLoss, generateAutomatedPushReport } from "./src/server/statsAlgorithm";
+import { analyze50Draws, generate50DrawsPrediction, calculateProfitAndLoss, getWeeklyProfitAndLoss, generateAutomatedPushReport } from "./src/server/statsAlgorithm";
 import { processTelegramMessage } from "./src/server/telegramBot";
 
 async function startServer() {
@@ -468,12 +468,14 @@ async function startServer() {
   app.get("/api/lottery/stats", (req, res) => {
     const stats = analyze50Draws(currentDraws);
     const pnl = calculateProfitAndLoss(currentDraws);
+    const weekly = getWeeklyProfitAndLoss(currentDraws);
     const prediction = generate50DrawsPrediction(currentDraws);
 
     res.json({
       success: true,
       stats,
       pnl,
+      weekly,
       prediction,
       drawsCount: currentDraws.length,
     });

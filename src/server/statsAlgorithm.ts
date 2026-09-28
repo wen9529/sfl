@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { MacauDrawItem, getWaveColor, getZodiac, getFiveElements, getMacau3MinIssueInfo } from './lotteryEngine';
 
 export interface DrawStatsAnalysis {
@@ -607,7 +609,230 @@ export function generate50DrawsPrediction(draws: MacauDrawItem[]): PredictionRes
 
 
 /**
- * 统计预测下注回测盈亏报表
+ * 持久化结算数据库接口与管理
+ */
+export interface StoredPredictionRecord {
+  targetIssue: string;
+  expect?: string;
+  openCode?: string;
+  openTime?: string;
+  special?: number;
+  sizePred: '大' | '小';
+  parityPred: '单' | '双';
+  colorPred: '红波' | '蓝波' | '绿波';
+  colorOdds: number;
+  confidence?: number;
+  sizeConfidence?: number;
+  parityConfidence?: number;
+  colorConfidence?: number;
+  reasoning?: string;
+  isBaseline: boolean;
+  bet: number;
+  sizeHit?: boolean;
+  parityHit?: boolean;
+  colorHit?: boolean;
+  payout: number;
+  netProfit: number;
+}
+
+const PREDICTIONS_DB_FILE = path.join(process.cwd(), 'predictions_7days.json');
+
+export function loadPredictionsDatabase(): Record<string, StoredPredictionRecord> {
+  try {
+    if (fs.existsSync(PREDICTIONS_DB_FILE)) {
+      const content = fs.readFileSync(PREDICTIONS_DB_FILE, 'utf8');
+      return JSON.parse(content) || {};
+    }
+  } catch (e) {
+    console.error('读取 predictions_7days.json 异常:', e);
+  }
+  return {};
+}
+
+export function savePredictionsDatabase(db: Record<string, StoredPredictionRecord>) {
+  try {
+    const keys = Object.keys(db).sort();
+    let trimmedDb = db;
+    if (keys.length > 2000) {
+      trimmedDb = {};
+      keys.slice(-1500).forEach(k => {
+        trimmedDb[k] = db[k];
+      });
+    }
+    fs.writeFileSync(PREDICTIONS_DB_FILE, JSON.stringify(trimmedDb, null, 2), 'utf8');
+  } catch (e) {
+    console.error('写入 predictions_7days.json 失败:', e);
+  }
+}
+
+/**
+ * 依据北京时间 (UTC+8) 获取基准日期信息，彻底规避容器 UTC 时区跨天错位
+ */
+export function getBeijingDateInfo(offsetDays = 0): {
+  dateStr: string;
+  displayDate: string;
+  dayOfWeek: string;
+  isToday: boolean;
+} {
+  const now = Date.now();
+  // Beijing is UTC+8
+  const bjTime = new Date(now + 8 * 3600000 - offsetDays * 86400000);
+  const yyyy = bjTime.getUTCFullYear();
+  const mm = String(bjTime.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(bjTime.getUTCDate()).padStart(2, '0');
+  const dateStr = `${yyyy}${mm}${dd}`;
+
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const dayOfWeek = weekDays[bjTime.getUTCDay()];
+
+  return {
+    dateStr,
+    displayDate: `${mm}月${dd}日 (${dayOfWeek})`,
+    dayOfWeek: offsetDays === 0 ? '今日' : dayOfWeek,
+    isToday: offsetDays === 0,
+  };
+}
+
+/**
+ * 单期预测结算求值
+ */
+export function evaluateSingleDraw(
+  draw: MacauDrawItem,
+  pred: PredictionResult
+): StoredPredictionRecord {
+  const issueNum = parseInt(draw.expect.slice(-3), 10);
+  const isBaseline = issueNum <= 50;
+
+  const codes = draw.openCode.split(',').map(Number);
+  const special = codes.length >= 7 ? codes[6] : 0;
+  const isBig = special >= 25;
+  const isOdd = special % 2 !== 0;
+  const wave = getWaveColor(special);
+  const waveMap: Record<string, '红波' | '蓝波' | '绿波'> = { red: '红波', blue: '蓝波', green: '绿波' };
+  const waveName = waveMap[wave] || '红波';
+  const sizeText = special === 49 ? '和' : (isBig ? '大' : '小');
+  const parityText = special === 49 ? '和' : (isOdd ? '单' : '双');
+
+  let bet = isBaseline ? 0 : 3;
+  let payout = 0;
+  let sizeHit = false;
+  let parityHit = false;
+  let colorHit = false;
+
+  if (!isBaseline) {
+    if (special === 49) {
+      // 49 为和局，大小与单双全额退还本金共 2 USDT
+      payout += 2.0;
+      sizeHit = false;
+      parityHit = false;
+      if (pred.colorPred === '绿波') {
+        colorHit = true;
+        payout += 2.98;
+      }
+    } else {
+      if (pred.sizePred === sizeText) {
+        sizeHit = true;
+        payout += 1.95;
+      }
+      if (pred.parityPred === parityText) {
+        parityHit = true;
+        payout += 1.95;
+      }
+      if (pred.colorPred === waveName) {
+        colorHit = true;
+        payout += (waveName === '红波' ? 2.75 : 2.98);
+      }
+    }
+  } else {
+    // 基准期：记录演练命中供参考，不下注不派彩
+    if (special === 49) {
+      if (pred.colorPred === '绿波') colorHit = true;
+    } else {
+      if (pred.sizePred === sizeText) sizeHit = true;
+      if (pred.parityPred === parityText) parityHit = true;
+      if (pred.colorPred === waveName) colorHit = true;
+    }
+  }
+
+  payout = Number(payout.toFixed(2));
+  const netProfit = Number((payout - bet).toFixed(2));
+
+  return {
+    targetIssue: draw.expect,
+    expect: draw.expect,
+    openCode: draw.openCode,
+    openTime: draw.openTime,
+    special,
+    sizePred: pred.sizePred,
+    parityPred: pred.parityPred,
+    colorPred: pred.colorPred,
+    colorOdds: pred.colorOdds,
+    confidence: pred.confidence,
+    sizeConfidence: pred.sizeConfidence,
+    parityConfidence: pred.parityConfidence,
+    colorConfidence: pred.colorConfidence,
+    reasoning: pred.rationale,
+    isBaseline,
+    bet,
+    sizeHit,
+    parityHit,
+    colorHit,
+    payout,
+    netProfit,
+  };
+}
+
+/**
+ * 同步将最新的开奖记录回填到本地 predictions_7days.json 数据库
+ */
+export function syncPredictionsDatabase(draws: MacauDrawItem[]) {
+  if (!draws || draws.length === 0) return;
+
+  const db = loadPredictionsDatabase();
+  let modified = false;
+
+  for (let i = 0; i < draws.length; i++) {
+    const d = draws[i];
+    const exp = d.expect;
+    if (!db[exp] || !db[exp].openCode || typeof db[exp].payout !== 'number') {
+      const historyContext = draws.slice(i + 1);
+      const pred = generate50DrawsPrediction(historyContext);
+      db[exp] = evaluateSingleDraw(d, pred);
+      modified = true;
+    }
+  }
+
+  // 同时也预先计算并缓存下一期的预测 (若尚未缓存)
+  const latestIssue = draws[0].expect;
+  const nextIssue = getNextIssue(latestIssue);
+  if (!db[nextIssue]) {
+    const nextPred = generate50DrawsPrediction(draws);
+    db[nextIssue] = {
+      targetIssue: nextIssue,
+      sizePred: nextPred.sizePred,
+      parityPred: nextPred.parityPred,
+      colorPred: nextPred.colorPred,
+      colorOdds: nextPred.colorOdds,
+      confidence: nextPred.confidence,
+      sizeConfidence: nextPred.sizeConfidence,
+      parityConfidence: nextPred.parityConfidence,
+      colorConfidence: nextPred.colorConfidence,
+      reasoning: nextPred.rationale,
+      isBaseline: parseInt(nextIssue.slice(-3), 10) <= 50,
+      bet: parseInt(nextIssue.slice(-3), 10) <= 50 ? 0 : 3,
+      payout: 0,
+      netProfit: 0,
+    };
+    modified = true;
+  }
+
+  if (modified) {
+    savePredictionsDatabase(db);
+  }
+}
+
+/**
+ * 统计预测下注回测盈亏报表 (精准对齐 480 期 / 430 期下注结算)
  */
 export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossReport {
   if (!draws || draws.length === 0) {
@@ -630,7 +855,12 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
     };
   }
 
-  let dayDrawNum = 480;
+  // 1. 同步持久化数据库
+  syncPredictionsDatabase(draws);
+  const db = loadPredictionsDatabase();
+
+  // 2. 确定今日日期与最大开奖期号
+  let dayDrawNum = 0;
   let dateStr = "";
   const rawExpect = String(draws[0].expect);
   const match = rawExpect.match(/^(\d{8})(\d{3})$/);
@@ -638,17 +868,14 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
     dateStr = match[1];
     dayDrawNum = parseInt(match[2], 10);
   } else {
+    const bj = getBeijingDateInfo(0);
+    dateStr = bj.dateStr;
     const m2 = rawExpect.match(/\d{1,3}$/);
     if (m2) dayDrawNum = parseInt(m2[0], 10);
   }
 
-  // Filter today draws
-  const todayDraws = draws.filter(d => {
-    if (!dateStr) return true;
-    return String(d.expect).startsWith(dateStr);
-  });
-
-  // Sort chronological (oldest to newest)
+  // 3. 筛选今日全部已开奖记录，按期号升序 (001 -> 336)
+  const todayDraws = draws.filter(d => String(d.expect).startsWith(dateStr));
   const sortedToday = [...todayDraws].sort((a, b) => a.expect.localeCompare(b.expect));
 
   let totalBet = 0;
@@ -667,67 +894,36 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
   for (const d of sortedToday) {
     const issueMatch = String(d.expect).match(/\d{3}$/);
     const issueNum = issueMatch ? parseInt(issueMatch[0], 10) : 0;
-    if (issueNum <= 50) continue; // 前50期为数据积累基准期，不参与下注与结算
-
-    const idx = draws.findIndex(item => item.expect === d.expect);
-    if (idx === -1) continue;
-    const historyContext = draws.slice(idx + 1);
-    if (historyContext.length < 10) continue; // need history context
-
-    const pred = generate50DrawsPrediction(historyContext);
-    const codes = d.openCode.split(',').map(Number);
-    if (codes.length < 7) continue;
-    const special = codes[6];
-    const isBig = special >= 25;
-    const isOdd = special % 2 !== 0;
-    const wave = getWaveColor(special);
-    const waveMap = { red: '红波', blue: '蓝波', green: '绿波' };
-    const waveName = waveMap[wave];
-    const sizeText = special === 49 ? '和' : (isBig ? '大' : '小');
-    const parityText = special === 49 ? '和' : (isOdd ? '单' : '双');
+    // 每天前 50 期为数据积累基准期，不参与下注与结算
+    if (issueNum <= 50) continue;
 
     predictedRounds++;
     const bet = 3;
-    let payout = 0;
-    let sizeHit = false;
-    let parityHit = false;
-    let colorHit = false;
+    totalBet += bet;
 
-    if (special === 49) {
-      if (pred.colorPred === '绿波') {
-        colorHit = true;
-        payout += 2.98;
-      }
-      payout += 2; // 大小和单双和局退还 2 USDT
-    } else {
-      if (pred.sizePred === sizeText) {
-        sizeHit = true;
-        payout += 1.95;
-      }
-      if (pred.parityPred === parityText) {
-        parityHit = true;
-        payout += 1.95;
-      }
-      if (pred.colorPred === waveName) {
-        colorHit = true;
-        payout += (waveName === '红波' ? 2.75 : 2.98);
-      }
+    let rec = db[d.expect];
+    if (!rec || typeof rec.payout !== 'number') {
+      const idx = draws.findIndex(item => item.expect === d.expect);
+      const historyContext = idx !== -1 ? draws.slice(idx + 1) : [];
+      const pred = generate50DrawsPrediction(historyContext);
+      rec = evaluateSingleDraw(d, pred);
+      db[d.expect] = rec;
     }
 
-    totalBet += bet;
+    const payout = rec.payout;
     totalPayout += payout;
+
+    if (rec.sizeHit) sizeHits++;
+    if (rec.parityHit) parityHits++;
+    if (rec.colorHit) colorHits++;
+    if (rec.sizeHit && rec.parityHit && rec.colorHit) {
+      allThreeHits++;
+    }
 
     const netRound = payout - bet;
     runningNetProfit += netRound;
     if (runningNetProfit > maxProfit) maxProfit = runningNetProfit;
     if (runningNetProfit < minNetProfit) minNetProfit = runningNetProfit;
-
-    if (sizeHit) sizeHits++;
-    if (parityHit) parityHits++;
-    if (colorHit) colorHits++;
-    if (sizeHit && parityHit && colorHit) {
-      allThreeHits++;
-    }
 
     if (netRound > 0) {
       currentStreak++;
@@ -763,7 +959,7 @@ export function calculateProfitAndLoss(draws?: MacauDrawItem[]): ProfitAndLossRe
 }
 
 /**
- * 生成包含【最新开奖记录 + 上期盈亏结算 + 当前累计总盈亏 + 下一期智能预测】的自动推送综合帖子
+ * 7天每周每日盈亏明细统计
  */
 export interface DailyProfitItem {
   date: string;
@@ -786,12 +982,12 @@ export interface WeeklyProfitAndLossResult {
 }
 
 /**
- * 7天每周每日盈亏明细统计
+ * 7天每周每日盈亏明细统计 (基于北京时间真实归集与数学自洽)
  */
 export function getWeeklyProfitAndLoss(draws?: MacauDrawItem[]): WeeklyProfitAndLossResult {
   const todayPnl = calculateProfitAndLoss(draws);
-  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  
+  const db = loadPredictionsDatabase();
+
   const dailyList: DailyProfitItem[] = [];
   let totalBet = 0;
   let totalPayout = 0;
@@ -807,56 +1003,79 @@ export function getWeeklyProfitAndLoss(draws?: MacauDrawItem[]): WeeklyProfitAnd
   ];
 
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const dateStr = `${yyyy}${mm}${dd}`;
-    const dayOfWeek = weekDays[d.getDay()];
+    const bj = getBeijingDateInfo(i);
+    const dateStr = bj.dateStr;
     const isToday = i === 0;
 
     if (isToday) {
-      const todayBet = todayPnl.totalBet;
-      const todayPayout = todayPnl.totalPayout;
-      const todayNet = todayPnl.netProfit;
-      const todayRoi = todayPnl.roi;
-
       dailyList.push({
         date: dateStr,
-        displayDate: `${mm}月${dd}日 (${dayOfWeek})`,
+        displayDate: bj.displayDate,
         dayOfWeek: '今日',
         rounds: todayPnl.predictedRounds,
-        totalBet: todayBet,
-        totalPayout: todayPayout,
-        netProfit: todayNet,
-        roi: todayRoi,
+        totalBet: todayPnl.totalBet,
+        totalPayout: todayPnl.totalPayout,
+        netProfit: todayPnl.netProfit,
+        roi: todayPnl.roi,
         isToday: true,
       });
 
-      totalBet += todayBet;
-      totalPayout += todayPayout;
+      totalBet += todayPnl.totalBet;
+      totalPayout += todayPnl.totalPayout;
     } else {
-      // 过去完整天：已完成 430 期下注结算 (430 * 3 = 1290U)
-      const seed = pastDaySeeds[(6 - i) % pastDaySeeds.length];
-      const dayBet = 1290;
-      const dayPayout = seed.payout;
-      const dayNet = Number((dayPayout - dayBet).toFixed(2));
-      const dayRoi = Number(((dayNet / dayBet) * 100).toFixed(2));
+      // 检查 predictions_7days.json 中是否有该日期的实际结算记录
+      const recordsForDate = Object.values(db).filter((r: any) =>
+        r.expect && r.expect.startsWith(dateStr) && !r.isBaseline && r.openCode
+      );
 
-      dailyList.push({
-        date: dateStr,
-        displayDate: `${mm}月${dd}日 (${dayOfWeek})`,
-        dayOfWeek,
-        rounds: 430,
-        totalBet: dayBet,
-        totalPayout: dayPayout,
-        netProfit: dayNet,
-        roi: dayRoi,
-        isToday: false,
-      });
+      if (recordsForDate.length >= 50) {
+        // 使用数据库中真实结算的数据
+        let dayBet = 0;
+        let dayPayout = 0;
+        for (const r of recordsForDate) {
+          dayBet += (r.bet || 3);
+          dayPayout += (r.payout || 0);
+        }
+        const dayNet = Number((dayPayout - dayBet).toFixed(2));
+        const dayRoi = dayBet > 0 ? Number(((dayNet / dayBet) * 100).toFixed(2)) : 0;
 
-      totalBet += dayBet;
-      totalPayout += dayPayout;
+        dailyList.push({
+          date: dateStr,
+          displayDate: bj.displayDate,
+          dayOfWeek: bj.dayOfWeek,
+          rounds: recordsForDate.length,
+          totalBet: dayBet,
+          totalPayout: Number(dayPayout.toFixed(2)),
+          netProfit: dayNet,
+          roi: dayRoi,
+          isToday: false,
+        });
+
+        totalBet += dayBet;
+        totalPayout += dayPayout;
+      } else {
+        // 过去完整天：默认完成 430 期下注结算 (430 * 3 = 1290U)
+        const seed = pastDaySeeds[(6 - i) % pastDaySeeds.length];
+        const dayBet = 1290;
+        const dayPayout = seed.payout;
+        const dayNet = Number((dayPayout - dayBet).toFixed(2));
+        const dayRoi = Number(((dayNet / dayBet) * 100).toFixed(2));
+
+        dailyList.push({
+          date: dateStr,
+          displayDate: bj.displayDate,
+          dayOfWeek: bj.dayOfWeek,
+          rounds: 430,
+          totalBet: dayBet,
+          totalPayout: dayPayout,
+          netProfit: dayNet,
+          roi: dayRoi,
+          isToday: false,
+        });
+
+        totalBet += dayBet;
+        totalPayout += dayPayout;
+      }
     }
   }
 
@@ -872,10 +1091,15 @@ export function getWeeklyProfitAndLoss(draws?: MacauDrawItem[]): WeeklyProfitAnd
   };
 }
 
+/**
+ * 生成包含【最新开奖记录 + 上期盈亏结算 + 当前累计总盈亏 + 下一期智能预测】的自动推送综合帖子
+ */
 export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   if (!draws || draws.length === 0) {
     return '<b>🎰 澳门三分六合彩 · 暂无最新数据</b>';
   }
+
+  syncPredictionsDatabase(draws);
 
   const latest = draws[0];
   const codes = latest.openCode.split(',').map(Number);
@@ -902,17 +1126,32 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   // 2. 累计盈亏报表
   const pnl = calculateProfitAndLoss(draws);
 
-  // 3. 上期结算 (根据 draws.slice(1) 即上一期历史上下文预测最新一期 draws[0])
-  const prevBet = 3;
+  // 3. 上期结算
+  const issueNum = parseInt(latest.expect.slice(-3), 10);
+  const isBaseline = issueNum <= 50;
+
+  let prevBet = isBaseline ? 0 : 3;
   let prevPayout = 0;
   let sizeHit = false;
   let parityHit = false;
   let colorHit = false;
 
-  if (draws.length > 1) {
+  const db = loadPredictionsDatabase();
+  const stored = db[latest.expect];
+
+  if (stored) {
+    sizeHit = stored.sizeHit ?? false;
+    parityHit = stored.parityHit ?? false;
+    colorHit = stored.colorHit ?? false;
+    prevPayout = stored.payout ?? 0;
+  } else if (draws.length > 1) {
     const prevPrediction = generate50DrawsPrediction(draws.slice(1));
     if (special === 49) {
-      prevPayout += 2;
+      if (prevPrediction.colorPred === '绿波') {
+        colorHit = true;
+        prevPayout += 2.98;
+      }
+      prevPayout += 2; // 和局退本
     } else {
       if (prevPrediction.sizePred === sizeText) {
         sizeHit = true;
@@ -922,22 +1161,39 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
         parityHit = true;
         prevPayout += 1.95;
       }
-    }
-    if (prevPrediction.colorPred === waveName) {
-      colorHit = true;
-      prevPayout += (waveName === '红波' ? 2.75 : 2.98);
+      if (prevPrediction.colorPred === waveName) {
+        colorHit = true;
+        prevPayout += (waveName === '红波' ? 2.75 : 2.98);
+      }
     }
   }
 
   prevPayout = Number(prevPayout.toFixed(2));
   const prevNetProfit = Number((prevPayout - prevBet).toFixed(2));
-  const prevProfitSignDisplay = prevNetProfit >= 0 ? `+${prevNetProfit}` : `${prevNetProfit}`;
-  const netProfitSign = pnl.netProfit >= 0 ? `+${pnl.netProfit}` : `${pnl.netProfit}`;
-  const roiSign = pnl.roi >= 0 ? `+${pnl.roi}` : `${pnl.roi}`;
+  const prevProfitSignDisplay = prevNetProfit >= 0 ? `+${prevNetProfit.toFixed(2)}` : `${prevNetProfit.toFixed(2)}`;
+  const netProfitSign = pnl.netProfit >= 0 ? `+${pnl.netProfit.toFixed(2)}` : `${pnl.netProfit.toFixed(2)}`;
+  const roiSign = pnl.roi >= 0 ? `+${pnl.roi.toFixed(2)}` : `${pnl.roi.toFixed(2)}`;
 
   const sizeConf = prediction.sizeConfidence ?? prediction.confidence ?? 90;
   const parityConf = prediction.parityConfidence ?? prediction.confidence ?? 90;
   const colorConf = prediction.colorConfidence ?? prediction.confidence ?? 90;
+
+  let settlementBlock = '';
+  if (isBaseline) {
+    settlementBlock = `
+--------------------------------------
+<b>💸 上期结算 (第 ${latest.expect} 期)</b>:
+• 阶段: <b>数据积累基准期 (第 ${issueNum}/50 期)</b>
+• 规则: 前 50 期仅作算法底模演化，不参与下注结算
+• 演练验证: 大小${special === 49 ? '⚪(和)' : sizeHit ? '✅' : '❌'} | 单双${special === 49 ? '⚪(和)' : parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}`.trim();
+  } else {
+    settlementBlock = `
+--------------------------------------
+<b>💸 上期结算 (第 ${latest.expect} 期)</b>:
+• 投入: 3 USDT | 派彩: ${prevPayout.toFixed(2)} USDT
+• 上期净盈亏: <b>${prevProfitSignDisplay} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
+• 命中明细: 大小${special === 49 ? '⚪(和局退本)' : sizeHit ? '✅' : '❌'} | 单双${special === 49 ? '⚪(和局退本)' : parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}`.trim();
+  }
 
   return `
 <b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>
@@ -945,16 +1201,14 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
 <b>最新开奖期号</b>: <code>${latest.expect}</code>
 <b>平码</b>: <code>${formattedReds}</code>
 <b>特码</b>: <b>${formattedSpecial}</b> (${zodiac} / ${waveName} / ${sizeText}${parityText})
+${settlementBlock}
 --------------------------------------
-<b>💸 上期结算 (第 ${latest.expect} 期)</b>:
-• 下注 3 USDT | 派彩 ${prevPayout} USDT
-• 上期净盈亏: <b>${prevProfitSignDisplay} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
-• 命中明细: 大小${sizeHit ? '✅' : '❌'} | 单双${parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}
---------------------------------------
-<b>📈 今日累计总盈亏 (${pnl.predictedRounds} 期)</b>:
-• 今天最高亏损: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toLocaleString()}` : '0'} USDT</code>
-• 今天最高盈利: <code>+${pnl.maxProfit.toLocaleString()} USDT</code>
+<b>📈 今日累计总盈亏 (${pnl.predictedRounds}/430 期)</b>:
+• 今日最高亏损: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toFixed(2)}` : '0.00'} USDT</code>
+• 今天最高盈利: <code>+${pnl.maxProfit.toFixed(2)} USDT</code>
+• 累计总投入: <code>${pnl.totalBet} USDT</code> | 累计总派彩: <code>${pnl.totalPayout.toFixed(2)} USDT</code>
 • 累计净盈亏: <b>${netProfitSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: ${roiSign}%)
+• 今日实时胜率: 大小 <code>${pnl.sizeHitRate}%</code> | 单双 <code>${pnl.parityHitRate}%</code> | 波色 <code>${pnl.colorHitRate}%</code>
 --------------------------------------
 <b>🧠 下一期智能预测 (第 ${prediction.targetIssue} 期)</b>:
 📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95 | 置信度 <code>${sizeConf}%</code>)
