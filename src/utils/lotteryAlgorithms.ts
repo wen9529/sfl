@@ -824,7 +824,7 @@ export function runBacktest(
   if (!historicalDraws || historicalDraws.length === 0) {
     return {
       totalDrawsTested: 0,
-      totalRounds: 430,
+      totalRounds: 480,
       totalBet: 0,
       totalPayout: 0,
       netProfit: 0,
@@ -837,13 +837,7 @@ export function runBacktest(
     };
   }
 
-  // Filter bettable rounds (sequence > 50)
-  const bettableDraws = historicalDraws.filter(d => {
-    const issueNum = parseInt(d.issue.slice(-3), 10);
-    return !isNaN(issueNum) && issueNum > 50;
-  });
-
-  const targetDraws = bettableDraws.length > 0 ? bettableDraws : historicalDraws;
+  const targetDraws = historicalDraws;
   const totalRounds = targetDraws.length;
   const betPerRound = 3;
   const totalBet = totalRounds * betPerRound;

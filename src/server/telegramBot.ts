@@ -56,7 +56,7 @@ export async function processTelegramMessage(
 
       if (text.includes('最新开奖') || text === '开奖' || text === '1') text = '/draw';
       else if (text.includes('智能预测') || text.includes('预测') || text === '推演' || text === '2') text = '/predict';
-      else if (text.includes('430期盈亏') || text.includes('盈亏') || text.includes('战报') || text === '3') text = '/stats';
+      else if (text.includes('480期盈亏') || text.includes('430期盈亏') || text.includes('盈亏') || text.includes('战报') || text === '3') text = '/stats';
       else if (text.includes('历史记录') || text.includes('历史') || text === '4') text = '/history 1';
       else if (text.includes('帮助') || text === '菜单' || text === 'help') text = '/help';
     } else if (typeof update === 'string') {
@@ -79,7 +79,7 @@ export async function processTelegramMessage(
   const replyKeyboard = {
     keyboard: [
       [{ text: '🎰 最新开奖' }, { text: '📜 历史记录' }],
-      [{ text: '🧠 智能预测' }, { text: '📊 430期盈亏' }],
+      [{ text: '🧠 智能预测' }, { text: '📊 480期盈亏' }],
       [{ text: '❓ 帮助菜单' }],
     ],
     resize_keyboard: true,
@@ -161,7 +161,7 @@ export async function processTelegramMessage(
 <b>🎰 最新开奖</b> - 查询最新一期开奖结果 (含生肖波色)
 <b>📜 历史记录</b> - 翻页查看 50 期开奖历史
 <b>🧠 智能预测</b> - 50期规律概率加权 AI 智能预测
-<b>📊 430期盈亏</b> - 每日预测下注动态累计盈亏报表
+<b>📊 480期盈亏</b> - 每日预测下注动态累计盈亏报表
 <b>❓ 帮助菜单</b> - 显示功能与使用说明
 --------------------------------------
 <i>💡 提示: 点击下方【键盘菜单】即可切换功能，帖子内按钮提供翻页与刷新支持。</i>
@@ -269,7 +269,7 @@ ${lines.join('\n\n')}
 💡 <b>规律依据</b>:
 <i>${pred.rationale}</i>
 --------------------------------------
-<i>说明: 前50期为数据积累，后430期预测结算。开出49时大小单双退本金。生成时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
+<i>说明: 澳门三分彩每日480期，每期3U全天候智能推演结算。特码49和局退本金。生成时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
 `.trim();
 
     const inlineButtons = [
@@ -309,7 +309,7 @@ ${dailyLines}
 🎁 <b>7天总累计派彩</b>: <code>${weeklyData.totalPayout.toFixed(2)} USDT</code>
 🏆 <b>7天总净盈亏</b>: <b>${totalNetSign} USDT 🚀</b> (周均回报率: <b>${totalRoiSign}</b>)
 ━━━━━━━━━━━━━━━━━━━━
-🎯 <b>今日实时核心战报 (第 ${pnl.predictedRounds}/430 期)</b>:
+🎯 <b>今日实时核心战报 (第 ${pnl.predictedRounds}/480 期)</b>:
 • 今日投入: <code>${pnl.totalBet} USDT</code> | 累计派彩: <code>${pnl.totalPayout.toFixed(2)} USDT</code>
 • 今日净盈亏: <b>${todayNetSign} USDT ${pnl.netProfit >= 0 ? '🚀' : '💧'}</b> (ROI: <b>${todayRoiSign}</b>)
 • 特码大小胜率: <code>${pnl.sizeHitRate}%</code> | 单双胜率: <code>${pnl.parityHitRate}%</code> | 波色胜率: <code>${pnl.colorHitRate}%</code>
@@ -317,7 +317,7 @@ ${dailyLines}
 • 今日最大回撤: <code>${pnl.maxLoss > 0 ? `-${pnl.maxLoss.toFixed(2)}` : '0.00'} USDT</code> | 最高盈利: <code>+${pnl.maxProfit.toFixed(2)} USDT</code>
 ━━━━━━━━━━━━━━━━━━━━
 📢 <b>官方预测频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || "@sanfencc66"}
-💡 <i>规则：每天480期，前50期积累基准，后430期下注结算(3U/期)。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
+💡 <i>规则：每天480期全天候下注结算(3U/期)。特码49退本金。更新时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
 `.trim();
 
     const inlineButtons = [
@@ -339,7 +339,7 @@ ${dailyLines}
 🎰 <b>/draw</b> - 查询最新开奖结果
 📜 <b>/history</b> - 查看 50 期历史开奖
 🧠 <b>/predict</b> - 50 期规律智能预测
-📊 <b>/stats</b> - 430 期盈亏统计报表
+📊 <b>/stats</b> - 480 期盈亏统计报表
 ❓ <b>/help</b> - 帮助与使用菜单
 --------------------------------------
 <i>💡 提示: 实时算法推演引擎已就绪，点击快捷按钮即可查看。</i>

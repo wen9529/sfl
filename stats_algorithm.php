@@ -662,8 +662,6 @@ if (!function_exists('calculateProfitAndLossPHP')) {
             $sortedDraws = array_reverse($draws);
             foreach ($sortedDraws as $d) {
                 if ($dateStr !== "" && strpos((string)$d['expect'], $dateStr) !== 0) continue;
-                $issueNum = intval(substr((string)$d['expect'], -3));
-                if ($issueNum <= 50) continue;
 
                 $codes = array_map('intval', explode(',', $d['openCode']));
                 if (count($codes) < 7) continue;
@@ -703,14 +701,14 @@ if (!function_exists('calculateProfitAndLossPHP')) {
 
         $netProfit = round($totalPayout - $totalBet, 2);
         $roi = $totalBet > 0 ? round(($netProfit / totalBet) * 100, 2) : 0;
-        $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 430);
+        $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 480);
         $maxLoss = round(abs(min(0, $minNetProfit)), 2);
         $maxProfitFinal = round(max(0, $maxProfit), 2);
 
         return [
             "dayDrawNum" => $dayDrawNum,
             "predictedRounds" => $predictedRounds,
-            "totalRounds" => 430,
+            "totalRounds" => 480,
             "isCompleted" => $isCompleted,
             "totalBet" => $totalBet,
             "totalPayout" => round($totalPayout, 2),
@@ -841,7 +839,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
              . "━━━━━━━━━━━━━━━━━━━━\n"
              . "{$settlementBlock}\n"
              . "━━━━━━━━━━━━━━━━━━━━\n"
-             . "📈 <b>今日累计战绩 ({$pnl['predictedRounds']}/430 期)</b>:\n"
+             . "📈 <b>今日累计战绩 ({$pnl['predictedRounds']}/480 期)</b>:\n"
              . "• 今日最大回撤: <code>" . ($pnl['maxLoss'] > 0 ? "-" . number_format($pnl['maxLoss'], 2) : "0.00") . " USDT</code>\n"
              . "• 今日最高盈利: <code>+" . number_format($pnl['maxProfit'], 2) . " USDT</code>\n"
              . "• 累计投入: <code>{$pnl['totalBet']} USDT</code> | 累计派彩: <code>" . number_format($pnl['totalPayout'], 2) . " USDT</code>\n"
@@ -882,12 +880,12 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
         $weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
         $pastSeeds = [
-            ['net' => 138.5, 'payout' => 1428.5],
-            ['net' => 165.2, 'payout' => 1455.2],
-            ['net' => 102.8, 'payout' => 1392.8],
-            ['net' => 215.4, 'payout' => 1505.4],
-            ['net' => 142.0, 'payout' => 1432.0],
-            ['net' => 178.6, 'payout' => 1468.6],
+            ['net' => 68.5, 'payout' => 1508.5],
+            ['net' => 82.2, 'payout' => 1522.2],
+            ['net' => 54.8, 'payout' => 1494.8],
+            ['net' => 95.4, 'payout' => 1535.4],
+            ['net' => 62.0, 'payout' => 1502.0],
+            ['net' => 76.6, 'payout' => 1516.6],
         ];
 
         $dailyMap = [];
@@ -916,7 +914,7 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
                 // 检查是否已有该日期的真实记录
                 $recordsForDate = [];
                 foreach ($db as $exp => $r) {
-                    if (strpos((string)$exp, $dStr) === 0 && empty($r['isBaseline']) && !empty($r['openCode'])) {
+                    if (strpos((string)$exp, $dStr) === 0 && !empty($r['openCode'])) {
                         $recordsForDate[] = $r;
                     }
                 }
@@ -948,11 +946,11 @@ if (!function_exists('getWeeklyProfitAndLossPHP')) {
                         'date' => $dStr,
                         'displayDate' => gmdate('m月d日', $timestamp) . " ({$wDay})",
                         'dayOfWeek' => $wDay,
-                        'rounds' => 430,
-                        'totalBet' => 1290,
+                        'rounds' => 480,
+                        'totalBet' => 1440,
                         'totalPayout' => $seed['payout'],
                         'netProfit' => $seed['net'],
-                        'roi' => round(($seed['net'] / 1290) * 100, 2),
+                        'roi' => round(($seed['net'] / 1440) * 100, 2),
                         'isToday' => false,
                     ];
                 }
@@ -978,14 +976,12 @@ if (!function_exists('updatePredictionsDBPHP')) {
         // 1. 回填历史开奖并结算
         foreach ($draws as $draw) {
             $exp = $draw['expect'];
-            $issueNum = intval(substr((string)$exp, -3));
-            $isBaseline = ($issueNum <= 50);
 
-            if (!isset($db[$exp])) {
-                // 如果库里没有，尝试回溯生成当时的预测，以保证数据完整性 (冷启动或漏期时)
+            if (!isset($db[$exp]) || (isset($db[$exp]['bet']) && $db[$exp]['bet'] === 0)) {
+                // 如果库里没有或曾为基准期0注，回溯生成预测以保证480期完整性
                 $idx = array_search($draw, $draws);
                 $slice = array_slice($draws, $idx + 1); // 当时的上下文
-                if (count($slice) >= 2) {
+                if (count($slice) >= 1) {
                     $pred = generatePredictFrom50DrawsPHP($slice);
                     $db[$exp] = [
                         'targetIssue' => $exp,
@@ -998,25 +994,20 @@ if (!function_exists('updatePredictionsDBPHP')) {
                         'parityConfidence' => $pred['parityConfidence'] ?? 90,
                         'colorConfidence' => $pred['colorConfidence'] ?? 90,
                         'reasoning' => $pred['reasoning'] ?? '',
-                        'bet' => $isBaseline ? 0 : 3,
+                        'bet' => 3,
                         'openCode' => ''
                     ];
                 }
             }
             
-            if (isset($db[$exp]) && empty($db[$exp]['openCode'])) {
+            if (isset($db[$exp]) && (empty($db[$exp]['openCode']) || empty($db[$exp]['payout']))) {
                 $db[$exp]['openCode'] = $draw['openCode'];
-                $db[$exp]['bet'] = $isBaseline ? 0 : 3;
+                $db[$exp]['bet'] = 3;
                 
                 $codes = array_map('intval', explode(',', $draw['openCode']));
                 if (count($codes) >= 7) {
                     $special = $codes[6];
-                    if ($isBaseline) {
-                        $db[$exp]['payout'] = 0;
-                        $db[$exp]['sizeHit'] = false;
-                        $db[$exp]['parityHit'] = false;
-                        $db[$exp]['colorHit'] = false;
-                    } else if ($special !== 49) {
+                    if ($special !== 49) {
                         $actualSize = $special >= 25 ? '大' : '小';
                         $actualParity = $special % 2 !== 0 ? '单' : '双';
                         $actualWave = getWaveColorPHP($special);
@@ -1052,8 +1043,6 @@ if (!function_exists('updatePredictionsDBPHP')) {
 
         // 2. 生成下一期预测并保存
         if (!isset($db[$nextIssue])) {
-            $nextIssueNum = intval(substr((string)$nextIssue, -3));
-            $isNextBaseline = ($nextIssueNum <= 50);
             $prediction = generatePredictFrom50DrawsPHP($draws);
             $db[$nextIssue] = [
                 'targetIssue' => $nextIssue,
@@ -1069,7 +1058,7 @@ if (!function_exists('updatePredictionsDBPHP')) {
                 'topZodiacs' => $prediction['topZodiacs'] ?? [],
                 'topTails' => $prediction['topTails'] ?? [],
                 'reasoning' => $prediction['reasoning'],
-                'bet' => $isNextBaseline ? 0 : 3,
+                'bet' => 3,
                 'openCode' => '',
             ];
         }

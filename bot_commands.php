@@ -331,20 +331,18 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
             return;
         }
 
-        // 5. /stats 或 /profit 或 /pnl 430期预测下注累计盈亏与近7天报表
+        // 5. /stats 或 /profit 或 /pnl 480期预测下注累计盈亏与近7天报表
         if (strpos($text, '/stats') === 0 || strpos($text, '/profit') === 0 || strpos($text, '/pnl') === 0) {
             $draws = getLatestDrawsPHP();
             $pnl = calculateProfitAndLossPHP($draws);
             $weeklyData = getWeeklyProfitAndLossPHP($draws);
 
-            $titleText = '<b>📊 澳门三分六合彩 · 430期预测下注盈亏报表</b>';
+            $titleText = '<b>📊 澳门三分六合彩 · 480期全天预测下注盈亏报表</b>';
             $statusText = '';
-            if ($pnl['predictedRounds'] === 0) {
-                $statusText = "⏳ <b>今日进度</b>: 算法数据积累中 (已完成 <b>{$pnl['dayDrawNum']}/50</b> 期基准开奖)，第 51 期开奖开启智能预测下注结算。";
-            } else if (!$pnl['isCompleted']) {
-                $statusText = "🎯 <b>今日进度</b>: 已累计预测下注 <code>{$pnl['predictedRounds']}/430</code> 期 (全天开出第 {$pnl['dayDrawNum']}/480 期)";
+            if (!$pnl['isCompleted']) {
+                $statusText = "🎯 <b>今日进度</b>: 已累计预测下注结算 <code>{$pnl['predictedRounds']}/480</code> 期";
             } else {
-                $statusText = "🏁 <b>今日进度</b>: <code>全天 430 期预测结算完毕 ✅</code> (共开出 {$pnl['dayDrawNum']} 期)";
+                $statusText = "🏁 <b>今日进度</b>: <code>全天 480 期预测结算完毕 ✅</code> (共开出 {$pnl['dayDrawNum']} 期)";
             }
 
             $netProfitSign = $pnl['netProfit'] >= 0 ? "+" : "";
@@ -382,7 +380,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "🎁 <b>7天总累计派彩</b>: <code>" . number_format($totalWeekPayout, 2) . " USDT</code>\n"
                      . "🏆 <b>7天总净盈亏</b>: <b>{$totalSign}" . number_format($totalWeekProfit, 2) . " USDT 🚀</b> (周均回报率: <b>{$weekRoiSign}</b>)\n"
                      . "━━━━━━━━━━━━━━━━━━━━\n"
-                     . "🎯 <b>今日实时核心战报 (第 {$pnl['predictedRounds']}/430 期)</b>:\n"
+                     . "🎯 <b>今日实时核心战报 (第 {$pnl['predictedRounds']}/480 期)</b>:\n"
                      . "• 今日投入: <code>{$pnl['totalBet']} USDT</code> | 累计派彩: <code>" . number_format($pnl['totalPayout'], 2) . " USDT</code>\n"
                      . "• 今日净盈亏: <b>{$netProfitSign}" . number_format($pnl['netProfit'], 2) . " USDT " . ($pnl['netProfit'] >= 0 ? "🚀" : "💧") . "</b> (ROI: <b>{$roiSign}{$pnl['roi']}%</b>)\n"
                      . "• 特码大小胜率: <code>{$pnl['sizeHitRate']}%</code> | 单双胜率: <code>{$pnl['parityHitRate']}%</code> | 波色胜率: <code>{$pnl['colorHitRate']}%</code>\n"
@@ -390,7 +388,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "• 今日最大回撤: <code>" . ($pnl['maxLoss'] > 0 ? "-" . number_format($pnl['maxLoss'], 2) : "0.00") . " USDT</code> | 最高盈利: <code>+" . number_format($pnl['maxProfit'], 2) . " USDT</code>\n"
                      . "━━━━━━━━━━━━━━━━━━━━\n"
                      . "📢 <b>官方预测频道</b>: " . (getenv("TELEGRAM_CHANNEL_URL") ?: "@sanfencc66") . "\n"
-                     . "💡 <i>规则：每天480期，前50期积累基准，后430期下注结算(3U/期)。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
+                     . "💡 <i>规则：每天480期全天候下注结算(3U/期)。特码49退本金。更新时间: " . date('H:i:s') . "</i>";
 
             $inlineButtons = [
                 [['text' => '🔄 刷新盈亏统计', 'callback_data' => 'cmd_stats']],
@@ -410,7 +408,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     . "🎰 <b>/draw</b> - 查询最新开奖结果\n"
                     . "📜 <b>/history</b> - 查看 50 期历史开奖\n"
                     . "🧠 <b>/predict</b> - 50 期规律智能预测\n"
-                    . "📊 <b>/stats</b> - 430 期盈亏统计报表\n"
+                    . "📊 <b>/stats</b> - 480 期盈亏统计报表\n"
                     . "❓ <b>/help</b> - 帮助与使用菜单\n"
                     . "--------------------------------------\n"
                     . "<i>💡 提示: 实时算法推演引擎已就绪，点击下侧按钮即可查看。</i>";

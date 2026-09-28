@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <LineChart className="w-4 h-4 text-emerald-400" />
-            430期量化盈亏看板
+            480期量化盈亏看板
           </button>
           <button
             onClick={() => setActiveTab('telegram')}

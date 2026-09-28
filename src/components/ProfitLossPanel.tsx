@@ -66,7 +66,7 @@ export const ProfitLossPanel: React.FC = () => {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center text-slate-400 my-4 shadow-xl">
         <RefreshCw className="w-10 h-10 text-rose-500 animate-spin mx-auto mb-4" />
-        <p className="text-base font-semibold text-slate-200">正在核算 430 期预测下注盈亏数据看板...</p>
+        <p className="text-base font-semibold text-slate-200">正在核算 480 期预测下注盈亏数据看板...</p>
         <p className="text-xs text-slate-500 mt-1">精密对齐每期大小、单双、波色及和局退本结算</p>
       </div>
     );
@@ -108,14 +108,14 @@ export const ProfitLossPanel: React.FC = () => {
                 <BarChart3 className="w-5 h-5" />
               </span>
               <h2 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
-                430 期量化盈亏与近 7 天统计看板
+                480 期量化盈亏与近 7 天统计看板
                 <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
                   真实回测 100% 审计
                 </span>
               </h2>
             </div>
             <p className="text-xs text-slate-400">
-              全天 480 期开奖：前 50 期积累基准，后 430 期下注结算 (3U/期)。特码 49 和局退本金。
+              全天 480 期开奖：从第 001 期至第 480 期全天候量化预测与结算 (3U/期)。特码 49 和局退本金。
               {lastUpdated && <span className="ml-2 text-slate-500">更新时间: {lastUpdated}</span>}
             </p>
           </div>
@@ -178,11 +178,11 @@ export const ProfitLossPanel: React.FC = () => {
           {/* Card 3: Today Progress */}
           <div className="bg-slate-950/70 p-4 rounded-xl border border-slate-800/80">
             <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-              <span>今日下注进度</span>
+              <span>今日结算进度</span>
               <Calendar className="w-3.5 h-3.5 text-sky-400" />
             </div>
             <div className="text-xl font-black text-amber-300">
-              {pnl.predictedRounds} <span className="text-xs font-normal text-slate-400">/ 430 期</span>
+              {pnl.predictedRounds} <span className="text-xs font-normal text-slate-400">/ 480 期</span>
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px] text-slate-400">
               <span>全天开出期数</span>
@@ -278,7 +278,7 @@ export const ProfitLossPanel: React.FC = () => {
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-100">近 7 天每日盈亏明细看板</h3>
-              <p className="text-xs text-slate-400">每日 430 期下注结算闭环与周回报率统一核对</p>
+              <p className="text-xs text-slate-400">每日 480 期全天候下注结算闭环与周回报率统一核对</p>
             </div>
           </div>
 
@@ -332,7 +332,7 @@ export const ProfitLossPanel: React.FC = () => {
                       {day.isToday ? (
                         <span className="inline-flex items-center gap-1 text-xs text-amber-400">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                          结算中 ({day.rounds}/430)
+                          结算中 ({day.rounds}/480)
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400">
@@ -411,19 +411,19 @@ export const ProfitLossPanel: React.FC = () => {
       <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 text-xs text-slate-400">
         <div className="flex items-center gap-2 font-bold text-slate-300 mb-2">
           <HelpCircle className="w-4 h-4 text-amber-400" />
-          <span>澳门三分六合彩 · 430期量化预测与结算数理规则说明</span>
+          <span>澳门三分六合彩 · 全天480期量化预测与结算数理规则说明</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 leading-relaxed">
           <div className="space-y-1">
-            <span className="text-slate-300 font-semibold block">1. 每天480期运行周期</span>
+            <span className="text-slate-300 font-semibold block">1. 每天480期完整运行周期</span>
             <p>
               澳门三分彩每天从北京时间 00:00:00 开出第 001 期，每 3 分钟一期，全天共 480 期开奖。系统自动拉取官方最新开奖并秒级回测核算。
             </p>
           </div>
           <div className="space-y-1">
-            <span className="text-slate-300 font-semibold block">2. 前50期数据积累基准</span>
+            <span className="text-slate-300 font-semibold block">2. 全天候480期预测下注结算</span>
             <p>
-              每天前 50 期作为高阶马尔可夫拓扑转移矩阵的冷启动基准期，不参与下注与结算。从第 51 期至第 480 期执行正式的 430 期预测下注回测。
+              依托跨天连续历史数据，每天从第 001 期至第 480 期实行全天候智能预测与回测结算 (3U/期)，全天满盘总投入 1440 USDT。
             </p>
           </div>
           <div className="space-y-1">
