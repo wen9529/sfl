@@ -63,10 +63,14 @@ export const TelegramPanel: React.FC = () => {
     reportText?: string;
   } | null>(null);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+  const [activeBotMode, setActiveBotMode] = useState<'polling' | 'webhook'>('polling');
   const [pollingStatus, setPollingStatus] = useState<{
     lastHeartbeat?: string;
     aliveSecondsAgo?: number;
     sessionId?: number;
+    activeBotMode?: 'polling' | 'webhook';
+    isRunning?: boolean;
+    pollingOffset?: number;
   } | null>(null);
   const [isRestartingPolling, setIsRestartingPolling] = useState<boolean>(false);
 
@@ -113,6 +117,9 @@ export const TelegramPanel: React.FC = () => {
         setConfig(data.config);
         setLastPushedIssue(data.lastPushedIssue || '无记录');
         setLogs(data.logs || []);
+        if (data.activeBotMode) {
+          setActiveBotMode(data.activeBotMode);
+        }
         if (data.pollingStatus) {
           setPollingStatus(data.pollingStatus);
         }
@@ -131,9 +138,26 @@ export const TelegramPanel: React.FC = () => {
       const data = await res.json();
       if (data.success) {
         fetchStatus();
+        fetchWebhookInfo();
       }
     } catch (e) {
       console.error('Failed to restart polling:', e);
+    } finally {
+      setIsRestartingPolling(false);
+    }
+  };
+
+  const handleSwitchToPolling = async () => {
+    setIsRestartingPolling(true);
+    try {
+      const res = await fetch('/api/telegram/delete-webhook', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fetchStatus();
+        fetchWebhookInfo();
+      }
+    } catch (e) {
+      console.error('Failed to switch to polling:', e);
     } finally {
       setIsRestartingPolling(false);
     }
@@ -285,29 +309,56 @@ export const TelegramPanel: React.FC = () => {
                 </span>
               </div>
 
-              <div className="space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800 sm:col-span-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800 sm:col-span-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                  <span className="text-slate-400 block font-medium">24/7 守护轮询 (Long Polling 实时秒回)</span>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      运行中 (心跳正常)
-                    </span>
-                    {pollingStatus?.lastHeartbeat && (
-                      <span className="text-slate-400 text-[11px] font-mono">
-                        最后心跳: {pollingStatus.lastHeartbeat} ({pollingStatus.aliveSecondsAgo ?? 0}s 前)
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 block font-medium">Telegram 交互通信通道</span>
+                    {activeBotMode === 'webhook' || webhookInfo?.url ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                        ⚡ Webhook 极速直连模式 (推荐 · 零休眠 · 秒级交互)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        🔄 Long Polling 守护轮询模式 (防冲突互斥锁已就绪)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-400 text-[11px] font-mono mt-1">
+                    {activeBotMode === 'webhook' || webhookInfo?.url ? (
+                      <span>
+                        已绑定回调地址: <code className="text-sky-300">{webhookInfo?.url || '当前服务器 Webhook'}</code> (消息即时唤醒)
+                      </span>
+                    ) : (
+                      <span>
+                        最后心跳: <code className="text-emerald-300">{pollingStatus?.lastHeartbeat || '正常'}</code> ({pollingStatus?.aliveSecondsAgo ?? 0}s 前) · 偏移量 Offset: <code className="text-amber-300">{pollingStatus?.pollingOffset ?? 0}</code>
                       </span>
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={handleRestartPolling}
-                  disabled={isRestartingPolling}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isRestartingPolling ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
-                  {isRestartingPolling ? '正在拉起守护进程...' : '⚡ 一键强制自愈重启'}
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {activeBotMode === 'webhook' || webhookInfo?.url ? (
+                    <button
+                      onClick={handleSwitchToPolling}
+                      disabled={isRestartingPolling}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRestartingPolling ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
+                      {isRestartingPolling ? '切换中...' : '转为轮询模式'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleRestartPolling}
+                      disabled={isRestartingPolling}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRestartingPolling ? 'animate-spin text-amber-400' : 'text-slate-400'}`} />
+                      {isRestartingPolling ? '正在拉起守护进程...' : '⚡ 一键强制自愈重启'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

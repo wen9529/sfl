@@ -1,4 +1,4 @@
-import { MacauDrawItem, getZodiac, getWaveColor } from './lotteryEngine';
+import { MacauDrawItem, getZodiac, getWaveColor, getLatestDraws } from './lotteryEngine';
 import { generate50DrawsPrediction, calculateProfitAndLoss, getWeeklyProfitAndLoss } from './statsAlgorithm';
 
 export async function processTelegramMessage(
@@ -29,36 +29,52 @@ export async function processTelegramMessage(
       text = `/history ${page}`;
     } else if (text === 'cmd_help') text = '/help';
 
-    // Acknowledge callback query
+    // Acknowledge callback query immediately with feedback
     try {
       await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callback_query_id: callbackQueryId }),
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text: '已处理请求 ✅',
+        }),
+        signal: AbortSignal.timeout(4000),
       });
     } catch (e) {
       // Ignore
     }
-  } else if (update?.message) {
-    const msg = update.message;
-    chatId = msg.chat?.id;
-    text = (msg.text || '').trim();
+  } else {
+    const msg = update?.message || update?.channel_post || update?.edited_message || update?.edited_channel_post;
+    if (msg) {
+      chatId = msg.chat?.id;
+      text = (msg.text || msg.caption || '').trim();
 
-    // 清理掉 @bot_username (例如 /draw@macau_bot -> /draw)
-    if (text.startsWith('/')) {
-      text = text.replace(/@\w+/g, '');
+      // 清理掉 @bot_username (例如 /draw@macau_bot -> /draw)
+      if (text.startsWith('/')) {
+        text = text.replace(/@\w+/g, '');
+      }
+
+      if (text.includes('最新开奖') || text === '开奖' || text === '1') text = '/draw';
+      else if (text.includes('智能预测') || text.includes('预测') || text === '推演' || text === '2') text = '/predict';
+      else if (text.includes('430期盈亏') || text.includes('盈亏') || text.includes('战报') || text === '3') text = '/stats';
+      else if (text.includes('历史记录') || text.includes('历史') || text === '4') text = '/history 1';
+      else if (text.includes('帮助') || text === '菜单' || text === 'help') text = '/help';
+    } else if (typeof update === 'string') {
+      text = update.trim();
     }
-
-    if (text.includes('最新开奖')) text = '/draw';
-    else if (text.includes('智能预测')) text = '/predict';
-    else if (text.includes('430期盈亏') || text.includes('盈亏')) text = '/stats';
-    else if (text.includes('历史记录')) text = '/history 1';
-    else if (text.includes('帮助')) text = '/help';
-  } else if (typeof update === 'string') {
-    text = update.trim();
   }
 
   if (!chatId) return;
+
+  // 确保开奖数据存在，若空则动态兜底拉取
+  let activeDraws = draws;
+  if (!activeDraws || activeDraws.length === 0) {
+    try {
+      activeDraws = await getLatestDraws();
+    } catch (e) {
+      activeDraws = [];
+    }
+  }
 
   const replyKeyboard = {
     keyboard: [
@@ -86,10 +102,14 @@ export async function processTelegramMessage(
           signal: AbortSignal.timeout(8000),
         });
         const editJson = await editRes.json();
+        // 如果成功或者内容相同未变更，直接结束，避免刷屏发送新消息
         if (editJson.ok) return;
+        if (editJson.description && editJson.description.includes('message is not modified')) {
+          return;
+        }
       }
 
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      const sendRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -100,6 +120,22 @@ export async function processTelegramMessage(
         }),
         signal: AbortSignal.timeout(8000),
       });
+      const sendJson = await sendRes.json();
+
+      // 如果 HTML 解析失败，自动纯文本降级重发，确保用户百分之百能收到回复
+      if (!sendJson.ok && sendJson.description && sendJson.description.includes("can't parse entities")) {
+        const plainText = htmlMsg.replace(/<[^>]*>/g, '');
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: plainText,
+            reply_markup: { inline_keyboard: inlineButtons },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+      }
 
       if (!isCallback) {
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -107,7 +143,7 @@ export async function processTelegramMessage(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: '📱 底部常驻菜单已配置，可随时点击切换：',
+            text: '📱 底部常驻菜单已就绪，可随时点击切换：',
             reply_markup: replyKeyboard,
           }),
           signal: AbortSignal.timeout(8000),

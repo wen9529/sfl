@@ -1,0 +1,42 @@
+[
+  {
+    "id": "log_1790584465405_342",
+    "time": "2026/9/28 16:34:25",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #2)",
+    "detail": "初始 Offset: 0"
+  },
+  {
+    "id": "log_1790584465405_131",
+    "time": "2026/9/28 16:34:25",
+    "type": "清除Webhook",
+    "status": "success",
+    "message": "成功清除 Webhook，已转入 Long Polling 实时轮询模式",
+    "detail": "{\n  \"ok\": true,\n  \"result\": true,\n  \"description\": \"Webhook is already deleted\"\n}"
+  },
+  {
+    "id": "log_1790584454134_432",
+    "time": "2026/9/28 16:34:14",
+    "type": "Webhook收到消息",
+    "status": "success",
+    "message": "收到来自 [6147494498] 的指令: /help",
+    "detail": "{\n  \"update_id\": 999999,\n  \"message\": {\n    \"message_id\": 1234,\n    \"chat\": {\n      \"id\": 6147494498\n    },\n    \"text\": \"/help\"\n  }\n}"
+  },
+  {
+    "id": "log_1790584437029_705",
+    "time": "2026/9/28 16:33:57",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #1)",
+    "detail": "初始 Offset: 0"
+  },
+  {
+    "id": "log_1790584115766_117",
+    "time": "2026/9/28 16:28:35",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #1)",
+    "detail": "主动清除冲突 Webhook 并进入 24/7 监听模式"
+  }
+]

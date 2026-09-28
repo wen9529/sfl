@@ -43,25 +43,28 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
 
             // 响应 callback 消除按钮加载动画
             sendTgRequestPHP($token, 'answerCallbackQuery', [
-                'callback_query_id' => $callbackQueryId
+                'callback_query_id' => $callbackQueryId,
+                'text' => '已处理请求 ✅'
             ]);
-        } else if (!empty($update['message'])) {
-            $msg = $update['message'];
-            $chatId = $msg['chat']['id'] ?? null;
-            $userMessageId = $msg['message_id'] ?? null;
-            $text = trim($msg['text'] ?? '');
+        } else {
+            $msg = $update['message'] ?? $update['channel_post'] ?? $update['edited_message'] ?? $update['edited_channel_post'] ?? null;
+            if ($msg) {
+                $chatId = $msg['chat']['id'] ?? null;
+                $userMessageId = $msg['message_id'] ?? null;
+                $text = trim($msg['text'] ?? $msg['caption'] ?? '');
 
-            // 清理掉 @bot_username (例如 /draw@macau_bot -> /draw)
-            if (strpos($text, '/') === 0) {
-                $text = preg_replace('/@\w+/', '', $text);
+                // 清理掉 @bot_username (例如 /draw@macau_bot -> /draw)
+                if (strpos($text, '/') === 0) {
+                    $text = preg_replace('/@\w+/', '', $text);
+                }
+
+                // 映射键盘菜单点击文本与自然语言输入
+                if (strpos($text, '最新开奖') !== false || $text === '开奖' || $text === '1') $text = '/draw';
+                else if (strpos($text, '智能预测') !== false || strpos($text, '预测') !== false || $text === '推演' || $text === '2') $text = '/predict';
+                else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '战报') !== false || strpos($text, '今日') !== false || $text === '3') $text = '/stats';
+                else if (strpos($text, '历史记录') !== false || strpos($text, '历史') !== false || $text === '4') $text = '/history 1';
+                else if (strpos($text, '帮助') !== false || $text === '菜单') $text = '/help';
             }
-
-            // 映射键盘菜单点击文本与自然语言输入
-            if (strpos($text, '最新开奖') !== false || $text === '开奖' || $text === '1') $text = '/draw';
-            else if (strpos($text, '智能预测') !== false || strpos($text, '预测') !== false || $text === '推演' || $text === '2') $text = '/predict';
-            else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '战报') !== false || strpos($text, '今日') !== false || $text === '3') $text = '/stats';
-            else if (strpos($text, '历史记录') !== false || strpos($text, '历史') !== false || $text === '4') $text = '/history 1';
-            else if (strpos($text, '帮助') !== false || $text === '菜单') $text = '/help';
         }
 
         if (!$chatId) return;
@@ -88,32 +91,37 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                     'reply_markup' => ['inline_keyboard' => $inlineButtons]
                 ]);
 
-                if (!($res['ok'] ?? false)) {
-                    sendTgRequestPHP($token, 'sendMessage', [
-                        'chat_id' => $chatId,
-                        'text' => $msgText,
-                        'parse_mode' => 'HTML',
-                        'reply_markup' => ['inline_keyboard' => $inlineButtons]
-                    ]);
+                if ($res['ok'] ?? false) return;
+                // 如果内容未变更，无需再次发送重复消息
+                if (isset($res['description']) && strpos($res['description'], 'message is not modified') !== false) {
+                    return;
                 }
-            } else {
-                // 这是用户发送的文本指令 (非回调)
-                // 发送新消息并携带内联按钮
-                $res = sendTgRequestPHP($token, 'sendMessage', [
+            }
+
+            // 发送新消息并携带内联按钮
+            $res = sendTgRequestPHP($token, 'sendMessage', [
+                'chat_id' => $chatId,
+                'text' => $msgText,
+                'parse_mode' => 'HTML',
+                'reply_markup' => ['inline_keyboard' => $inlineButtons]
+            ]);
+
+            // 若 HTML 格式被 Telegram 拦截，尝试降级为纯文本发送
+            if (!($res['ok'] ?? false) && isset($res['description']) && strpos($res['description'], "can't parse entities") !== false) {
+                sendTgRequestPHP($token, 'sendMessage', [
                     'chat_id' => $chatId,
-                    'text' => $msgText,
-                    'parse_mode' => 'HTML',
+                    'text' => strip_tags($msgText),
                     'reply_markup' => ['inline_keyboard' => $inlineButtons]
                 ]);
+            }
 
-                // 首次交互发送底部常驻快捷菜单
-                if (strpos($text, '/start') === 0 || strpos($text, '/help') === 0) {
-                    sendTgRequestPHP($token, 'sendMessage', [
-                        'chat_id' => $chatId,
-                        'text' => '📱 底部常驻快捷菜单已就绪，可随时点击切换：',
-                        'reply_markup' => $replyKeyboard
-                    ]);
-                }
+            // 首次交互发送底部常驻快捷菜单
+            if (!$isCallback && (strpos($text, '/start') === 0 || strpos($text, '/help') === 0)) {
+                sendTgRequestPHP($token, 'sendMessage', [
+                    'chat_id' => $chatId,
+                    'text' => '📱 底部常驻快捷菜单已就绪，可随时点击切换：',
+                    'reply_markup' => $replyKeyboard
+                ]);
             }
         };
 
