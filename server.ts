@@ -189,16 +189,22 @@ async function startServer() {
     pollLoop();
   }
 
-  // 智能自适应模式检测：启动时检查并清除冲突 Webhook，确保 Long Polling 立即健康启动
+  // 智能自适应模式检测：启动时检查是否存在活跃 Webhook，若存在则进入 Webhook 守护模式，绝不随意清除生产 Webhook
   async function detectAndInitTelegramMode() {
     const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
     if (!token) return;
 
     try {
-      // 清除可能导致 409 冲突的残留 Webhook
-      await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, {
+      const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
         signal: AbortSignal.timeout(5000),
       });
+      const infoData = await infoRes.json();
+      if (infoData.ok && infoData.result?.url) {
+        activeBotMode = "webhook";
+        console.log(`[Telegram] 检测到活跃 24/7 Webhook (${infoData.result.url})，保持 Webhook 模式，不抢占生产环境。`);
+        writeTelegramLog("模式检测", "success", `检测到活跃 24/7 Webhook: ${infoData.result.url}`, "保持生产 Webhook 模式运行");
+        return;
+      }
     } catch (e) {}
 
     activeBotMode = "polling";
@@ -207,11 +213,11 @@ async function startServer() {
 
   detectAndInitTelegramMode();
 
-  // Watchdog 看门狗：每 10 秒巡检一次，若轮询挂掉或心跳超过 35 秒，立即无缝自愈拉起
+  // Watchdog 看门狗：每 10 秒巡检一次，仅在 polling 轮询模式下检测并无缝自愈（Webhook 模式无需轮询）
   setInterval(async () => {
     const now = Date.now();
     const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
-    if (token && (!isPollingLoopRunning || now - lastPollingHeartbeat > 35000)) {
+    if (token && activeBotMode === "polling" && (!isPollingLoopRunning || now - lastPollingHeartbeat > 35000)) {
       console.warn(`[Telegram Watchdog] 检测到 Polling 停滞或心跳超时 (${Math.round((now - lastPollingHeartbeat) / 1000)}s)，自动唤醒自愈重启...`);
       writeTelegramLog("看门狗自动自愈", "error", "检测到 Polling 停滞或心跳超时，自动重启监听进程", `无心跳时间: ${Math.round((now - lastPollingHeartbeat) / 1000)}秒`);
       startTelegramPolling(true);

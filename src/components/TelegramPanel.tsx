@@ -77,7 +77,7 @@ export const TelegramPanel: React.FC = () => {
   // Webhook Binding state
   const [webhookInfo, setWebhookInfo] = useState<WebhookInfo | null>(null);
   const [isBindingWebhook, setIsBindingWebhook] = useState<boolean>(false);
-  const [customWebhookUrl, setCustomWebhookUrl] = useState<string>('');
+  const [customWebhookUrl, setCustomWebhookUrl] = useState<string>('https://wenge9529.serv00.net/telegram_bot.php');
   const [webhookResult, setWebhookResult] = useState<{
     success: boolean;
     message: string;
@@ -460,14 +460,24 @@ export const TelegramPanel: React.FC = () => {
               <span className="text-xs text-sky-400 font-normal ml-2 font-mono">【解决 Bot 无反应问题】</span>
             </h2>
           </div>
-          <button
-            onClick={() => handleSetWebhook()}
-            disabled={isBindingWebhook}
-            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
-          >
-            <LinkIcon className={`w-3.5 h-3.5 ${isBindingWebhook ? 'animate-spin' : ''}`} />
-            {isBindingWebhook ? '正在绑定 Webhook...' : '🔗 一键绑定当前应用 Webhook'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSetWebhook('https://wenge9529.serv00.net/telegram_bot.php')}
+              disabled={isBindingWebhook}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
+            >
+              <LinkIcon className={`w-3.5 h-3.5 ${isBindingWebhook ? 'animate-spin' : ''}`} />
+              {isBindingWebhook ? '正在绑定 Webhook...' : '🚀 一键绑定 Serv00 24/7 生产 Webhook'}
+            </button>
+            <button
+              onClick={handleSwitchToPolling}
+              disabled={isRestartingPolling}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRestartingPolling ? 'animate-spin' : ''}`} />
+              转为本地轮询
+            </button>
+          </div>
         </div>
 
         {/* Explain why channel push works but bot messages don't respond */}

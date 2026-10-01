@@ -677,7 +677,7 @@ if (!function_exists('calculateProfitAndLossPHP')) {
         }
 
         $netProfit = round($totalPayout - $totalBet, 2);
-        $roi = $totalBet > 0 ? round(($netProfit / totalBet) * 100, 2) : 0;
+        $roi = $totalBet > 0 ? round(($netProfit / $totalBet) * 100, 2) : 0;
         $isCompleted = ($dayDrawNum >= 480 && $predictedRounds >= 480);
         $maxLoss = round(abs(min(0, $minNetProfit)), 2);
         $maxProfitFinal = round(max(0, $maxProfit), 2);
