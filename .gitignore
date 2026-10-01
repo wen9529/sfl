@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+telegram_logs.json
+telegram_offset.txt
+last_pushed_issue.txt
+predictions_7days.json
+lottery_cache_50.json
