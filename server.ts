@@ -69,6 +69,21 @@ async function startServer() {
     const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
     if (!token) return;
 
+    if (!forceRestart) {
+      try {
+        const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        const infoData = await infoRes.json();
+        if (infoData.ok && infoData.result?.url) {
+          activeBotMode = "webhook";
+          console.log(`[Telegram] 检测到当前存在活跃 24/7 Webhook: ${infoData.result.url}，跳过本地轮询以保护生产环境。`);
+          writeTelegramLog("模式检测", "success", `检测到活跃 24/7 Webhook: ${infoData.result.url}`, "保持 Webhook 模式运行，避免抢占冲突");
+          return;
+        }
+      } catch (e) {}
+    }
+
     if (activeBotMode === "webhook" && !forceRestart) {
       console.log("[Telegram] 当前处于 Webhook 直连模式，无需启动 Long Polling 轮询。");
       return;
@@ -146,15 +161,11 @@ async function startServer() {
             const desc = data.description || "";
             // 如果提示 Webhook 激活冲突，自动清除冲突的 Webhook，保持轮询无缝运行
             if (desc.includes("webhook is active")) {
-              console.warn("[Telegram Polling] 检测到 Webhook 激活冲突，自动清除残留 Webhook 并恢复轮询...");
-              writeTelegramLog("自动清除Webhook冲突", "warning", "检测到 Webhook 激活冲突，自动清除残留并恢复轮询", desc);
-              try {
-                await fetch(`https://api.telegram.org/bot${currentToken}/deleteWebhook?drop_pending_updates=false`, {
-                  signal: AbortSignal.timeout(5000),
-                });
-              } catch (delErr) {}
-              await new Promise((r) => setTimeout(r, 1000));
-              continue;
+              console.warn("[Telegram Polling] 检测到 24/7 Webhook 正在运行，切换至 Webhook 模式，停止本地轮询...");
+              writeTelegramLog("模式切换", "success", "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式", desc);
+              activeBotMode = "webhook";
+              isPollingLoopRunning = false;
+              break;
             } else {
               pollingConsecutive409Count++;
               const backoffSec = Math.min(6, 2 + pollingConsecutive409Count);
