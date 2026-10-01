@@ -760,6 +760,8 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
         $colorHit = false;
 
         $latestExpect = $latest['expect'];
+        $issueNum = intval(substr($latestExpect, -3));
+        $isBaseline = ($issueNum <= 50);
         if (isset($db[$latestExpect])) {
             $record = $db[$latestExpect];
             $sizeHit = !empty($record['sizeHit']);
