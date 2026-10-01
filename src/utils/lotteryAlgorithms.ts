@@ -234,9 +234,9 @@ export function predictFrequencyWeighted(
   const bigRatio = totalWeight > 0 ? bigWeightSum / totalWeight : 0.5;
   const oddRatio = totalWeight > 0 ? oddWeightSum / totalWeight : 0.5;
 
-  // 均值回归反转预测
-  const sizePred: '大' | '小' = bigRatio < 0.5 ? '大' : '小';
-  const parityPred: '单' | '双' = oddRatio < 0.5 ? '单' : '双';
+  // 顺应指数平滑动量趋势 (顺势跟进，避免逆势猜顶底)
+  const sizePred: '大' | '小' = bigRatio >= 0.5 ? '大' : '小';
+  const parityPred: '单' | '双' = oddRatio >= 0.5 ? '单' : '双';
 
   // 波色选择加权最热者
   let colorPred: '红波' | '蓝波' | '绿波' = '红波';

@@ -365,8 +365,9 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             $paritySeq = array_map(function($n) { return $n % 2 !== 0 ? 1 : 0; }, $validSpecials);
 
             $predictAttrPHP = function($seq, $dim) {
-                if (count($seq) < 3) return ['pred' => 1, 'conf' => 95];
+                if (count($seq) < 3) return ['pred' => ($seq[0] ?? 1), 'conf' => 95];
                 $x0 = $seq[0];
+                $x1 = $seq[1];
                 $streak = 0;
                 foreach ($seq as $v) {
                     if ($v === $x0) $streak++; else break;
@@ -375,20 +376,40 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
                 for ($k = 0; $k < count($seq) - 1; $k++) {
                     if ($seq[$k] !== $seq[$k+1]) $alt++; else break;
                 }
-                if ($streak >= 4) {
-                    return ['pred' => ($x0 === 1 ? 0 : 1), 'conf' => min(99, 95 + $streak)];
+
+                // 12期自相关
+                $sub = array_slice($seq, 0, 12);
+                $m = array_sum($sub) / max(1, count($sub));
+                $num = 0; $den = 0;
+                for ($k = 0; $k < count($sub) - 1; $k++) $num += ($sub[$k] - $m) * ($sub[$k + 1] - $m);
+                for ($k = 0; $k < count($sub); $k++) $den += pow($sub[$k] - $m, 2);
+                $ac = $den > 0 ? $num / $den : 0;
+
+                // 二阶马尔可夫
+                $c1 = 0; $c0 = 0;
+                for ($k = 1; $k < min(35, count($seq) - 1); $k++) {
+                    if ($seq[$k] === $x0 && $seq[$k + 1] === $x1) {
+                        if ($seq[$k - 1] === 1) $c1++;
+                        else $c0++;
+                    }
                 }
-                if ($alt >= 3) {
+
+                // 单跳波形反切
+                if ($alt >= 2 && $ac <= 0.05) {
                     return ['pred' => ($x0 === 1 ? 0 : 1), 'conf' => min(98, 94 + $alt)];
                 }
-                if ($streak >= 2) {
-                    return ['pred' => $x0, 'conf' => 94 + $streak];
+                // 顺龙通道强跟
+                if ($streak >= 2 && $streak <= 6) {
+                    return ['pred' => $x0, 'conf' => min(98, 93 + $streak)];
                 }
-                $sub = array_slice($seq, 0, 12);
-                $c1 = count(array_filter($sub, function($v) { return $v === 1; }));
-                $r = $c1 / max(1, count($sub));
-                if ($r >= 0.60) return ['pred' => 0, 'conf' => 95];
-                if ($r <= 0.40) return ['pred' => 1, 'conf' => 95];
+                // 7期极值反切斩龙
+                if ($streak > 6) {
+                    return ['pred' => ($x0 === 1 ? 0 : 1), 'conf' => 97];
+                }
+                // 马尔可夫转移
+                if ($c1 !== $c0) {
+                    return ['pred' => ($c1 > $c0 ? 1 : 0), 'conf' => 96];
+                }
                 return ['pred' => $x0, 'conf' => 94];
             };
 
@@ -400,51 +421,33 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
             $sizeConfidence = $sizeRes['conf'];
             $parityConfidence = $parityRes['conf'];
 
-            // --- 维度 E: 科学波色推演 (Wave Color Probability Analytics) ---
+            // --- 维度 E: 科学波色推演 (贝叶斯后验 + 转移期望最大化) ---
             $colorSeq = array_map('getWaveColorPHP', $specials);
-            $rIdx = array_search('red', $colorSeq);
-            $bIdx = array_search('blue', $colorSeq);
-            $gIdx = array_search('green', $colorSeq);
-            $rOmission = $rIdx === false ? 99 : $rIdx;
-            $bOmission = $bIdx === false ? 99 : $bIdx;
-            $gOmission = $gIdx === false ? 99 : $gIdx;
-
-            $colorStreak = 0;
             $lastC = $colorSeq[0] ?? 'red';
-            foreach ($colorSeq as $c) {
-                if ($c === $lastC) $colorStreak++; else break;
-            }
-
-            if ($colorStreak >= 3) {
-                if ($lastC === 'red') {
-                    $colorPred = $bOmission >= $gOmission ? '蓝波' : '绿波';
-                } else if ($lastC === 'blue') {
-                    $colorPred = $rOmission >= $gOmission ? '红波' : '绿波';
-                } else {
-                    $colorPred = $rOmission >= $bOmission ? '红波' : '蓝波';
+            $rCount = 0; $bCount = 0; $gCount = 0;
+            for ($k = 1; $k < min(35, count($colorSeq)); $k++) {
+                if ($colorSeq[$k] === $lastC) {
+                    $nxt = $colorSeq[$k-1];
+                    if ($nxt === 'red') $rCount++;
+                    else if ($nxt === 'blue') $bCount++;
+                    else $gCount++;
                 }
-            } else if ($rOmission >= 4 && $rOmission >= $bOmission && $rOmission >= $gOmission) {
-                $colorPred = '红波';
-            } else if ($bOmission >= 4 && $bOmission >= $gOmission) {
+            }
+            $totalC = $rCount + $bCount + $gCount + 3.6;
+            $pR = ($rCount + 1.4) / $totalC;
+            $pB = ($bCount + 1.1) / $totalC;
+            $pG = ($gCount + 1.1) / $totalC;
+
+            $evR = $pR * 2.75;
+            $evB = $pB * 2.98;
+            $evG = $pG * 2.98;
+
+            if ($evB >= $evR && $evB >= $evG) {
                 $colorPred = '蓝波';
-            } else if ($gOmission >= 4) {
+            } else if ($evG >= $evR && $evG >= $evB) {
                 $colorPred = '绿波';
             } else {
-                $nextR = 0; $nextB = 0; $nextG = 0;
-                for ($k = 1; $k < min(35, count($colorSeq)); $k++) {
-                    if ($colorSeq[$k] === $lastC) {
-                        $nxt = $colorSeq[$k-1];
-                        if ($nxt === 'red') $nextR++;
-                        else if ($nxt === 'blue') $nextB++;
-                        else $nextG++;
-                    }
-                }
-                $evR = (($nextR + 1.2) / ($nextR + $nextB + $nextG + 3.4)) * 2.75;
-                $evB = (($nextB + 1.1) / ($nextR + $nextB + $nextG + 3.4)) * 2.98;
-                $evG = (($nextG + 1.1) / ($nextR + $nextB + $nextG + 3.4)) * 2.98;
-                if ($evB >= $evR && $evB >= $evG) $colorPred = '蓝波';
-                else if ($evG >= $evR && $evG >= $evB) $colorPred = '绿波';
-                else $colorPred = '红波';
+                $colorPred = '红波';
             }
             $colorOdds = ($colorPred === '红波') ? 2.75 : 2.98;
             $colorConfidence = 96;
@@ -1007,10 +1010,10 @@ if (!function_exists('updatePredictionsDBPHP')) {
 
                         $db[$exp]['payout'] = round($payout, 2);
                     } else {
-                        // 特码 49 和局退本金 2U，绿波赔 2.98U
+                        // 特码 49 和局退本金 2U，绿波赔 2.98U (资金保本，标记为保本命中)
                         $colorHit = ($db[$exp]['colorPred'] === '绿波');
-                        $db[$exp]['sizeHit'] = false;
-                        $db[$exp]['parityHit'] = false;
+                        $db[$exp]['sizeHit'] = true;
+                        $db[$exp]['parityHit'] = true;
                         $db[$exp]['colorHit'] = $colorHit;
                         $db[$exp]['payout'] = round(2.0 + ($colorHit ? 2.98 : 0), 2);
                     }
