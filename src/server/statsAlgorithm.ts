@@ -965,22 +965,12 @@ export function generateAutomatedPushReport(draws: MacauDrawItem[]): string {
   const parityConf = prediction.parityConfidence ?? prediction.confidence ?? 90;
   const colorConf = prediction.colorConfidence ?? prediction.confidence ?? 90;
 
-  let settlementBlock = '';
-  if (isBaseline) {
-    settlementBlock = `
---------------------------------------
-<b>💸 上期结算 (第 ${latest.expect} 期)</b>:
-• 阶段: <b>数据积累基准期 (第 ${issueNum}/50 期)</b>
-• 规则: 前 50 期仅作算法底模演化，不参与下注结算
-• 演练验证: 大小${special === 49 ? '⚪(和)' : sizeHit ? '✅' : '❌'} | 单双${special === 49 ? '⚪(和)' : parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}`.trim();
-  } else {
-    settlementBlock = `
+  const settlementBlock = `
 --------------------------------------
 <b>💸 上期结算 (第 ${latest.expect} 期)</b>:
 • 投入: 3 USDT | 派彩: ${prevPayout.toFixed(2)} USDT
 • 上期净盈亏: <b>${prevProfitSignDisplay} USDT ${prevNetProfit >= 0 ? '📈' : '📉'}</b>
 • 命中明细: 大小${special === 49 ? '⚪(和局退本)' : sizeHit ? '✅' : '❌'} | 单双${special === 49 ? '⚪(和局退本)' : parityHit ? '✅' : '❌'} | 波色${colorHit ? '✅' : '❌'}`.trim();
-  }
 
   return `
 <b>🎰 澳门三分六合彩 · 自动定时推演与盈亏简报</b>
@@ -1001,9 +991,7 @@ ${settlementBlock}
 📏 <b>大小预测</b>: <b>【 ${prediction.sizePred} 】</b> (赔率 1.95 | 置信度 <code>${sizeConf}%</code>)
 🎲 <b>单双预测</b>: <b>【 ${prediction.parityPred} 】</b> (赔率 1.95 | 置信度 <code>${parityConf}%</code>)
 🎨 <b>波色预测</b>: <b>【 ${prediction.colorPred} 】</b> (赔率 ${prediction.colorOdds} | 置信度 <code>${colorConf}%</code>)
---------------------------------------
-<b>📢 官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL || ""}
-<i>💡 每分钟自动拉取开奖并实时演算推演</i>
+${process.env.TELEGRAM_CHANNEL_URL ? `--------------------------------------\n<b>📢 官方频道</b>: ${process.env.TELEGRAM_CHANNEL_URL}\n` : ''}<i>💡 每分钟自动拉取开奖并实时演算推演</i>
 `.trim();
 }
 
