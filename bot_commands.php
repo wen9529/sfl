@@ -61,7 +61,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                 // 映射键盘菜单点击文本与自然语言输入
                 if (strpos($text, '最新开奖') !== false || $text === '开奖' || $text === '1') $text = '/draw';
                 else if (strpos($text, '智能预测') !== false || strpos($text, '预测') !== false || $text === '推演' || $text === '2') $text = '/predict';
-                else if (strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '战报') !== false || strpos($text, '今日') !== false || $text === '3') $text = '/stats';
+                else if (strpos($text, '480期盈亏') !== false || strpos($text, '430期盈亏') !== false || strpos($text, '盈亏统计') !== false || strpos($text, '盈亏') !== false || strpos($text, '战报') !== false || strpos($text, '今日') !== false || $text === '3') $text = '/stats';
                 else if (strpos($text, '历史记录') !== false || strpos($text, '历史') !== false || $text === '4') $text = '/history 1';
                 else if (strpos($text, '帮助') !== false || $text === '菜单') $text = '/help';
             }
@@ -73,7 +73,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
         $replyKeyboard = [
             'keyboard' => [
                 [['text' => '🎰 最新开奖'], ['text' => '📜 历史记录']],
-                [['text' => '🧠 智能预测'], ['text' => '📊 盈亏统计']]
+                [['text' => '🧠 智能预测'], ['text' => '📊 480期盈亏']]
             ],
             'resize_keyboard' => true,
             'one_time_keyboard' => false
@@ -132,7 +132,7 @@ if (!function_exists('handleTelegramBotCommandPHP')) {
                      . "<b>🎰 最新开奖</b> - 查询最新一期开奖结果 (含生肖波色)\n"
                      . "<b>📜 历史记录</b> - 翻页查看 50 期开奖历史\n"
                      . "<b>🧠 智能预测</b> - 50期规律概率加权 AI 智能预测\n"
-                     . "<b>📊 盈亏统计</b> - 每日预测下注动态累计盈亏报表\n"
+                     . "<b>📊 480期盈亏</b> - 每日预测下注动态累计盈亏报表\n"
                      . "<b>❓ 帮助菜单</b> - 显示功能与使用说明\n"
                      . "--------------------------------------\n"
                      . "<i>💡 提示: 点击下方【键盘菜单】即可切换功能，帖子内按钮提供翻页与刷新支持。</i>";

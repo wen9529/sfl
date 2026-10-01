@@ -81,9 +81,9 @@ async function startServer() {
       } catch (e) {}
     }
 
-    // 等待旧循环安全退出（最多等待 800ms）
+    // 等待旧循环安全退出（最多等待 500ms）
     let waitCount = 0;
-    while (isPollingLoopRunning && waitCount < 8) {
+    while (isPollingLoopRunning && waitCount < 5) {
       await new Promise((r) => setTimeout(r, 100));
       waitCount++;
     }
@@ -99,20 +99,17 @@ async function startServer() {
     writeTelegramLog("Polling启动", "success", `启动 Telegram 守护轮询 (Session #${thisSessionId})`, `初始 Offset: ${pollingOffset}`);
 
     const pollLoop = async () => {
-      while (thisSessionId === currentPollSessionId && activeBotMode === "polling") {
+      while (thisSessionId === currentPollSessionId) {
         lastPollingHeartbeat = Date.now();
         try {
           const currentToken = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
           if (!currentToken) {
-            await new Promise((r) => setTimeout(r, 5000));
+            await new Promise((r) => setTimeout(r, 3000));
             continue;
           }
 
-          // 结合 AbortController 与 22 秒单次请求超时
-          const timeoutSignal = AbortSignal.timeout(22000);
-          const combinedSignal = (AbortSignal as any).any 
-            ? (AbortSignal as any).any([activeAbortController!.signal, timeoutSignal])
-            : timeoutSignal;
+          // 单次请求设置 25 秒超时 (Telegram API timeout 为 15 秒)
+          const timeoutSignal = AbortSignal.timeout(25000);
 
           const allowedUpdatesParam = encodeURIComponent(
             JSON.stringify(["message", "edited_message", "channel_post", "edited_channel_post", "callback_query"])
@@ -120,10 +117,10 @@ async function startServer() {
 
           const res = await fetch(
             `https://api.telegram.org/bot${currentToken}/getUpdates?offset=${pollingOffset}&timeout=15&allowed_updates=${allowedUpdatesParam}`,
-            { signal: combinedSignal }
+            { signal: timeoutSignal }
           );
 
-          if (thisSessionId !== currentPollSessionId || activeBotMode !== "polling") break;
+          if (thisSessionId !== currentPollSessionId) break;
 
           const data = await res.json();
           lastPollingHeartbeat = Date.now();
@@ -147,28 +144,32 @@ async function startServer() {
             }
           } else if (data.error_code === 409) {
             const desc = data.description || "";
+            // 如果提示 Webhook 激活冲突，自动清除冲突的 Webhook，保持轮询无缝运行
             if (desc.includes("webhook is active")) {
-              console.log("[Telegram Polling] 检测到 Webhook 已激活，自动切换至 Webhook 直连模式");
-              writeTelegramLog("转入Webhook模式", "success", "检测到 Webhook 已激活，自动切换为 Webhook 模式，轮询守护已休眠", desc);
-              activeBotMode = "webhook";
-              break;
+              console.warn("[Telegram Polling] 检测到 Webhook 激活冲突，自动清除残留 Webhook 并恢复轮询...");
+              writeTelegramLog("自动清除Webhook冲突", "warning", "检测到 Webhook 激活冲突，自动清除残留并恢复轮询", desc);
+              try {
+                await fetch(`https://api.telegram.org/bot${currentToken}/deleteWebhook?drop_pending_updates=false`, {
+                  signal: AbortSignal.timeout(5000),
+                });
+              } catch (delErr) {}
+              await new Promise((r) => setTimeout(r, 1000));
+              continue;
             } else {
-              // 409 实例冲突 (可能已有其他进程连接或刚重启)，执行梯度避让
               pollingConsecutive409Count++;
-              const backoffSec = Math.min(30, 10 + pollingConsecutive409Count * 5);
+              const backoffSec = Math.min(6, 2 + pollingConsecutive409Count);
               console.warn(`[Telegram Polling] 检测到 409 实例冲突 (${desc})，等待 ${backoffSec} 秒冷却重试...`);
-              writeTelegramLog("Polling冲突避让", "error", `检测到 409 实例冲突，进入 ${backoffSec} 秒冷却`, desc);
               await new Promise((r) => setTimeout(r, backoffSec * 1000));
             }
           } else {
-            // 其他 API 返回，短暂停顿
-            await new Promise((r) => setTimeout(r, 2000));
+            // 其他 API 返回，停顿 1 秒后继续
+            await new Promise((r) => setTimeout(r, 1000));
           }
         } catch (e: any) {
-          if (thisSessionId !== currentPollSessionId || activeBotMode !== "polling") break;
-          if (e.name === "AbortError") break;
-          // 网络抖动或超时后等待 2 秒继续
-          await new Promise((r) => setTimeout(r, 2000));
+          if (thisSessionId !== currentPollSessionId) break;
+          // 网络抖动、超时或瞬态中断：坚决不退出循环，更新心跳并 1 秒后自动继续！
+          lastPollingHeartbeat = Date.now();
+          await new Promise((r) => setTimeout(r, 1000));
         }
       }
       isPollingLoopRunning = false;
@@ -177,42 +178,34 @@ async function startServer() {
     pollLoop();
   }
 
-  // 智能自适应模式检测：启动时检查 Telegram Webhook 状态，根据实际情况无冲突初始化
+  // 智能自适应模式检测：启动时检查并清除冲突 Webhook，确保 Long Polling 立即健康启动
   async function detectAndInitTelegramMode() {
     const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
     if (!token) return;
 
     try {
-      const res = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
-        signal: AbortSignal.timeout(6000),
+      // 清除可能导致 409 冲突的残留 Webhook
+      await fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, {
+        signal: AbortSignal.timeout(5000),
       });
-      const data = await res.json();
-      if (data.ok && data.result?.url) {
-        activeBotMode = "webhook";
-        console.log(`[Telegram] 探测到已配置活跃 Webhook: ${data.result.url}，采用 Webhook 极速直连模式运行。`);
-        writeTelegramLog("初始化Webhook模式", "success", "检测到已配置 Webhook，采用直连模式运行", `当前 Webhook URL: ${data.result.url}`);
-        return;
-      }
     } catch (e) {}
 
-    // 未配置 Webhook 时默认开启 Long Polling
     activeBotMode = "polling";
     startTelegramPolling();
   }
 
   detectAndInitTelegramMode();
 
-  // Watchdog 看门狗：每 15 秒巡检一次，仅在轮询模式下且心跳超 75 秒无响应时才复活拉起，杜绝误杀与 409 震荡
+  // Watchdog 看门狗：每 10 秒巡检一次，若轮询挂掉或心跳超过 35 秒，立即无缝自愈拉起
   setInterval(async () => {
-    if (activeBotMode !== "polling") return;
     const now = Date.now();
     const token = telegramConfig.botToken || process.env.TELEGRAM_BOT_TOKEN;
-    if (token && now - lastPollingHeartbeat > 75000) {
-      console.warn(`[Telegram Watchdog] 检测到 Polling 心跳停滞 (${Math.round((now - lastPollingHeartbeat) / 1000)}s)，自动唤醒重启...`);
-      writeTelegramLog("看门狗自动自愈", "error", "检测到 Polling 心跳停滞，自动重启监听进程", `无心跳时间: ${Math.round((now - lastPollingHeartbeat) / 1000)}秒`);
+    if (token && (!isPollingLoopRunning || now - lastPollingHeartbeat > 35000)) {
+      console.warn(`[Telegram Watchdog] 检测到 Polling 停滞或心跳超时 (${Math.round((now - lastPollingHeartbeat) / 1000)}s)，自动唤醒自愈重启...`);
+      writeTelegramLog("看门狗自动自愈", "error", "检测到 Polling 停滞或心跳超时，自动重启监听进程", `无心跳时间: ${Math.round((now - lastPollingHeartbeat) / 1000)}秒`);
       startTelegramPolling(true);
     }
-  }, 15000);
+  }, 10000);
 
   // Keep-Alive 心跳：每 20 秒自检一次，保持 Node.js 事件循环活跃并防止空闲休眠
   setInterval(() => {
@@ -270,7 +263,26 @@ async function startServer() {
         }
         console.log(`[自动推送成功] 检测到新开奖 [第 ${latestIssue} 期]，已推送到 ${telegramConfig.chatId}`);
       } else {
-        console.error(`[自动推送失败] 检测到新开奖 [第 ${latestIssue} 期]，但 Telegram 接口报错:`, tgData.description);
+        console.warn(`[自动推送重试] HTML发送失败 (${tgData.description})，使用纯文本降级重发...`);
+        const plainText = reportText.replace(/<[^>]*>/g, '');
+        const plainRes = await fetch(`https://api.telegram.org/bot${telegramConfig.botToken}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: telegramConfig.chatId,
+            text: plainText,
+            disable_web_page_preview: true,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        const plainData = await plainRes.json();
+        if (plainData.ok) {
+          lastPushedIssue = latestIssue;
+          try { fs.writeFileSync(lastPushedFile, latestIssue, "utf8"); } catch (e) {}
+          console.log(`[自动推送成功 - 降级纯文本] 检测到新开奖 [第 ${latestIssue} 期] 已推送到群组`);
+        } else {
+          console.error(`[自动推送失败] 检测到新开奖 [第 ${latestIssue} 期]，Telegram 报错:`, tgData.description);
+        }
       }
     } catch (err: any) {
       console.error(`[自动推送异常] 检测到新开奖 [第 ${latestIssue} 期]，但网络超时或发生错误:`, err.message);

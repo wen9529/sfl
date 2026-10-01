@@ -357,113 +357,95 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
                 $flatResonanceOdd = ($flatSum % 2 !== 0) ? 0.54 : 0.46;
             }
 
-            // --- 综合打分集成 (Ensemble Weighted Voting - 十维矩阵集成 v8.0 Pro) ---
-            // 权重配比: 多尺度衰减核 35% + 高阶马尔可夫 28% + 平码共振 18% + 卡尔曼动量 14% + 遗漏重心 5%
-            $finalBigScore = ($multiDecayBig * 0.35) + ($markovBigProb * 0.28) + ($flatResonanceBig * 0.18) + ((0.5 + $macdB * 0.5) * 0.14) + ($densityBigProb * 0.05);
-            $finalSmallScore = 1.0 - $finalBigScore;
+            // --- 动态走势相位状态机 (连龙顺势、单跳交替、二阶马尔可夫与极值斩龙) ---
+            $validSpecials = array_values(array_filter($specials, function($n) { return $n !== 49; }));
+            $sizeSeq = array_map(function($n) { return $n >= 25 ? 1 : 0; }, $validSpecials);
+            $paritySeq = array_map(function($n) { return $n % 2 !== 0 ? 1 : 0; }, $validSpecials);
 
-            $finalOddScore = ($multiDecayOdd * 0.35) + ($markovOddProb * 0.28) + ($flatResonanceOdd * 0.18) + ((0.5 + $macdO * 0.5) * 0.14) + ($densityOddProb * 0.05);
-            $finalEvenScore = 1.0 - $finalOddScore;
+            $predictAttrPHP = function($seq, $dim) {
+                if (count($seq) < 3) return ['pred' => 1, 'conf' => 95];
+                $x0 = $seq[0];
+                $streak = 0;
+                foreach ($seq as $v) {
+                    if ($v === $x0) $streak++; else break;
+                }
+                $alt = 0;
+                for ($k = 0; $k < count($seq) - 1; $k++) {
+                    if ($seq[$k] !== $seq[$k+1]) $alt++; else break;
+                }
+                if ($streak >= 4) {
+                    return ['pred' => ($x0 === 1 ? 0 : 1), 'conf' => min(99, 95 + $streak)];
+                }
+                if ($alt >= 3) {
+                    return ['pred' => ($x0 === 1 ? 0 : 1), 'conf' => min(98, 94 + $alt)];
+                }
+                if ($streak >= 2) {
+                    return ['pred' => $x0, 'conf' => 94 + $streak];
+                }
+                $sub = array_slice($seq, 0, 12);
+                $c1 = count(array_filter($sub, function($v) { return $v === 1; }));
+                $r = $c1 / max(1, count($sub));
+                if ($r >= 0.60) return ['pred' => 0, 'conf' => 95];
+                if ($r <= 0.40) return ['pred' => 1, 'conf' => 95];
+                return ['pred' => $x0, 'conf' => 94];
+            };
 
-            // 长龙阻力与顺势微调 (布林带极值斩龙)
-            if ($consecutiveBig >= 6) {
-                $finalSmallScore += 0.18; // 6连以上强力反弹斩龙
-            } else if ($consecutiveBig >= 3) {
-                $finalBigScore += 0.09; // 3-5连顺龙
-            } else if ($consecutiveSmall >= 6) {
-                $finalBigScore += 0.18;
-            } else if ($consecutiveSmall >= 3) {
-                $finalSmallScore += 0.09;
-            }
+            $sizeRes = $predictAttrPHP($sizeSeq, '大小');
+            $parityRes = $predictAttrPHP($paritySeq, '单双');
 
-            if ($consecutiveOdd >= 6) {
-                $finalEvenScore += 0.18;
-            } else if ($consecutiveOdd >= 3) {
-                $finalOddScore += 0.09;
-            } else if ($consecutiveEven >= 6) {
-                $finalOddScore += 0.18;
-            } else if ($consecutiveEven >= 3) {
-                $finalEvenScore += 0.09;
-            }
+            $sizePred = $sizeRes['pred'] === 1 ? '大' : '小';
+            $parityPred = $parityRes['pred'] === 1 ? '单' : '双';
+            $sizeConfidence = $sizeRes['conf'];
+            $parityConfidence = $parityRes['conf'];
 
             // --- 维度 E: 科学波色推演 (Wave Color Probability Analytics) ---
-            // 彻底去除 rand()！通过 1) 当前遗漏 2) 历史频次 3) 转移矩阵精确计算
-            $redOmission = 0; $blueOmission = 0; $greenOmission = 0;
-            $redHits = 0; $blueHits = 0; $greenHits = 0;
-            $foundRed = false; $foundBlue = false; $foundGreen = false;
+            $colorSeq = array_map('getWaveColorPHP', $specials);
+            $rIdx = array_search('red', $colorSeq);
+            $bIdx = array_search('blue', $colorSeq);
+            $gIdx = array_search('green', $colorSeq);
+            $rOmission = $rIdx === false ? 99 : $rIdx;
+            $bOmission = $bIdx === false ? 99 : $bIdx;
+            $gOmission = $gIdx === false ? 99 : $gIdx;
 
-            $transFromLastWave = ['red' => 0, 'blue' => 0, 'green' => 0];
-            $lastSpecial = $specials[0] ?? 1;
-            $lastWave = in_array($lastSpecial, $redNums) ? 'red' : (in_array($lastSpecial, $blueNums) ? 'blue' : 'green');
+            $colorStreak = 0;
+            $lastC = $colorSeq[0] ?? 'red';
+            foreach ($colorSeq as $c) {
+                if ($c === $lastC) $colorStreak++; else break;
+            }
 
-            for ($i = 0; $i < $specCount; $i++) {
-                $sp = $specials[$i];
-                $w = in_array($sp, $redNums) ? 'red' : (in_array($sp, $blueNums) ? 'blue' : 'green');
-                if ($w === 'red') { $redHits++; $foundRed = true; } else if (!$foundRed) $redOmission++;
-                if ($w === 'blue') { $blueHits++; $foundBlue = true; } else if (!$foundBlue) $blueOmission++;
-                if ($w === 'green') { $greenHits++; $foundGreen = true; } else if (!$foundGreen) $greenOmission++;
-
-                if ($i < $specCount - 1) {
-                    $prevSp = $specials[$i + 1];
-                    $prevW = in_array($prevSp, $redNums) ? 'red' : (in_array($prevSp, $blueNums) ? 'blue' : 'green');
-                    if ($prevW === $lastWave) {
-                        $transFromLastWave[$w]++;
+            if ($colorStreak >= 3) {
+                if ($lastC === 'red') {
+                    $colorPred = $bOmission >= $gOmission ? '蓝波' : '绿波';
+                } else if ($lastC === 'blue') {
+                    $colorPred = $rOmission >= $gOmission ? '红波' : '绿波';
+                } else {
+                    $colorPred = $rOmission >= $bOmission ? '红波' : '蓝波';
+                }
+            } else if ($rOmission >= 4 && $rOmission >= $bOmission && $rOmission >= $gOmission) {
+                $colorPred = '红波';
+            } else if ($bOmission >= 4 && $bOmission >= $gOmission) {
+                $colorPred = '蓝波';
+            } else if ($gOmission >= 4) {
+                $colorPred = '绿波';
+            } else {
+                $nextR = 0; $nextB = 0; $nextG = 0;
+                for ($k = 1; $k < min(35, count($colorSeq)); $k++) {
+                    if ($colorSeq[$k] === $lastC) {
+                        $nxt = $colorSeq[$k-1];
+                        if ($nxt === 'red') $nextR++;
+                        else if ($nxt === 'blue') $nextB++;
+                        else $nextG++;
                     }
                 }
+                $evR = (($nextR + 1.2) / ($nextR + $nextB + $nextG + 3.4)) * 2.75;
+                $evB = (($nextB + 1.1) / ($nextR + $nextB + $nextG + 3.4)) * 2.98;
+                $evG = (($nextG + 1.1) / ($nextR + $nextB + $nextG + 3.4)) * 2.98;
+                if ($evB >= $evR && $evB >= $evG) $colorPred = '蓝波';
+                else if ($evG >= $evR && $evG >= $evB) $colorPred = '绿波';
+                else $colorPred = '红波';
             }
-
-            // 基础概率 (49码中 红17码=34.7%, 蓝16码=32.65%, 绿16码=32.65%)
-            $redScore = 0.347 * 1.0;
-            $blueScore = 0.3265 * 1.0;
-            $greenScore = 0.3265 * 1.0;
-
-            // 遗漏回补增益 (遗漏越大，回补能量越强)
-            $redScore += $redOmission * 0.05;
-            $blueScore += $blueOmission * 0.055;
-            $greenScore += $greenOmission * 0.055;
-
-            // 波色马尔可夫转移增益
-            $totalTrans = array_sum($transFromLastWave);
-            if ($totalTrans > 0) {
-                $redScore += ($transFromLastWave['red'] / $totalTrans) * 0.25;
-                $blueScore += ($transFromLastWave['blue'] / $totalTrans) * 0.25;
-                $greenScore += ($transFromLastWave['green'] / $totalTrans) * 0.25;
-            }
-
-            $waveScores = ['红波' => $redScore, '蓝波' => $blueScore, '绿波' => $greenScore];
-            arsort($waveScores);
-            $colorPred = array_key_first($waveScores);
             $colorOdds = ($colorPred === '红波') ? 2.75 : 2.98;
-
-            // 纠错机制注入
-            $correctionReason = [];
-            if ($applyCorrection) {
-                if (!empty($correctionData['sizeWrong'])) {
-                    $finalBigScore = 1.0 - $finalBigScore;
-                    $finalSmallScore = 1.0 - $finalSmallScore;
-                    $correctionReason[] = "⚠️ 识别到上期[大小]微小扰动，启动【AI 自适应自愈纠偏】：反转相位共振，锁定均值回弹。";
-                } else {
-                    $correctionReason[] = "✅ 上期[大小]精准命中，多因子动量通道健康，继续乘胜追击。";
-                }
-
-                if (!empty($correctionData['parityWrong'])) {
-                    $finalOddScore = 1.0 - $finalOddScore;
-                    $finalEvenScore = 1.0 - $finalEvenScore;
-                    $correctionReason[] = "⚠️ 捕捉到上期[单双]离散波动，触发【一阶马尔可夫拓扑修正】：阻断震荡，逆转阻力位。";
-                } else {
-                    $correctionReason[] = "✅ 上期[单双]精准命中，单双维度趋势稳固，持续加码锁定。";
-                }
-            }
-
-            $sizePred = $finalBigScore >= $finalSmallScore ? '大' : '小';
-            $parityPred = $finalOddScore >= $finalEvenScore ? '单' : '双';
-
-            $sizeDiff = abs($finalBigScore - $finalSmallScore);
-            $parityDiff = abs($finalOddScore - $finalEvenScore);
-
-            $sizeConfidence = min(99, max(94, 94 + (int)($sizeDiff * 20)));
-            $parityConfidence = min(99, max(94, 94 + (int)($parityDiff * 20)));
-            $colorConfidence = min(99, max(93, 93 + (int)(($waveScores[$colorPred] - 0.3) * 18)));
+            $colorConfidence = 96;
 
             // --- 维度 F: 精选 1-49 特码与生肖推荐 (Top Gold Numbers & Zodiacs) ---
             $candidateScores = [];
@@ -623,13 +605,6 @@ if (!function_exists('calculateProfitAndLossPHP')) {
                 continue;
             }
 
-            // 期号后3位:
-            $issueNum = intval(substr((string)$exp, -3));
-            // 每天前 50 期为数据积累基准期，不参与下注与结算！
-            if ($issueNum <= 50) {
-                continue;
-            }
-
             $predictedRounds++;
             $bet = isset($record['bet']) ? $record['bet'] : 3;
             $totalBet += $bet;
@@ -776,9 +751,7 @@ if (!function_exists('generateAutomatedPushReportPHP')) {
         $pnl = calculateProfitAndLossPHP($draws);
 
         // 3. 上期结算
-        $issueNum = intval(substr((string)$latest['expect'], -3));
-        $isBaseline = ($issueNum <= 50);
-        $prevBet = $isBaseline ? 0 : 3;
+        $prevBet = 3;
         $prevPayout = 0;
         $sizeHit = false;
         $parityHit = false;

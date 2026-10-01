@@ -1,6 +1,14 @@
 import { MacauDrawItem, getZodiac, getWaveColor, getLatestDraws } from './lotteryEngine';
 import { generate50DrawsPrediction, calculateProfitAndLoss, getWeeklyProfitAndLoss } from './statsAlgorithm';
 
+function escapeHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 export async function processTelegramMessage(
   token: string,
   update: any,
@@ -67,12 +75,11 @@ export async function processTelegramMessage(
   if (!chatId) return;
 
   // 确保开奖数据存在，若空则动态兜底拉取
-  let activeDraws = draws;
-  if (!activeDraws || activeDraws.length === 0) {
+  if (!draws || draws.length === 0) {
     try {
-      activeDraws = await getLatestDraws();
+      draws = await getLatestDraws();
     } catch (e) {
-      activeDraws = [];
+      draws = [];
     }
   }
 
@@ -89,24 +96,25 @@ export async function processTelegramMessage(
   const deliverMessage = async (htmlMsg: string, inlineButtons: any[]) => {
     try {
       if (isCallback && messageId) {
-        const editRes = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            message_id: messageId,
-            text: htmlMsg,
-            parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: inlineButtons },
-          }),
-          signal: AbortSignal.timeout(8000),
-        });
-        const editJson = await editRes.json();
-        // 如果成功或者内容相同未变更，直接结束，避免刷屏发送新消息
-        if (editJson.ok) return;
-        if (editJson.description && editJson.description.includes('message is not modified')) {
-          return;
-        }
+        try {
+          const editRes = await fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              message_id: messageId,
+              text: htmlMsg,
+              parse_mode: 'HTML',
+              reply_markup: { inline_keyboard: inlineButtons },
+            }),
+            signal: AbortSignal.timeout(8000),
+          });
+          const editJson = await editRes.json();
+          if (editJson.ok) return;
+          if (editJson.description && editJson.description.includes('message is not modified')) {
+            return;
+          }
+        } catch (e) {}
       }
 
       const sendRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -122,8 +130,9 @@ export async function processTelegramMessage(
       });
       const sendJson = await sendRes.json();
 
-      // 如果 HTML 解析失败，自动纯文本降级重发，确保用户百分之百能收到回复
-      if (!sendJson.ok && sendJson.description && sendJson.description.includes("can't parse entities")) {
+      // 如果 HTML 发送失败（如实体解析错误等），自动纯文本降级重发，确保百分之百送达
+      if (!sendJson.ok) {
+        console.warn(`[Telegram send failed: ${sendJson.description}], 自动降级为纯文本格式重发...`);
         const plainText = htmlMsg.replace(/<[^>]*>/g, '');
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
@@ -137,13 +146,14 @@ export async function processTelegramMessage(
         });
       }
 
-      if (!isCallback) {
+      // 仅在首次 /start 或 /help 时发送键盘菜单，避免日常操作连发两条消息骚扰或触发限流
+      if (!isCallback && (text.startsWith('/start') || text.startsWith('/help'))) {
         await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: '📱 底部常驻菜单已就绪，可随时点击切换：',
+            text: '📱 底部常驻菜单已就绪，可随时点击下方键盘按钮快捷切换功能：',
             reply_markup: replyKeyboard,
           }),
           signal: AbortSignal.timeout(8000),
@@ -201,6 +211,18 @@ export async function processTelegramMessage(
       ];
 
       await deliverMessage(msg, inlineButtons);
+    } else {
+      const msg = `
+<b>🎰 澳门三分六合彩 · 最新开奖结果</b>
+--------------------------------------
+⚠️ 实时开奖数据正在同步中，请点击下方按钮刷新重试。
+--------------------------------------
+刷新时间: ${new Date().toLocaleTimeString('zh-CN')}
+`.trim();
+      const inlineButtons = [
+        [{ text: '🔄 刷新最新开奖', callback_data: 'cmd_draw' }],
+      ];
+      await deliverMessage(msg, inlineButtons);
     }
     return;
   }
@@ -218,6 +240,21 @@ export async function processTelegramMessage(
     const startIndex = (page - 1) * pageSize;
     const slice = draws.slice(startIndex, startIndex + pageSize);
     const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+
+    if (slice.length === 0) {
+      const msg = `
+<b>📜 澳门三分六合彩 · 开奖历史记录</b>
+--------------------------------------
+⚠️ 暂未查询到历史记录，请返回第 1 页或点击刷新。
+--------------------------------------
+刷新时间: ${new Date().toLocaleTimeString('zh-CN')}
+`.trim();
+      const inlineButtons = [
+        [{ text: '🔄 返回第 1 页', callback_data: 'cmd_history_page_1' }],
+      ];
+      await deliverMessage(msg, inlineButtons);
+      return;
+    }
 
     const lines = slice.map((item) => {
       const codes = item.openCode.split(',').map(Number);
@@ -267,7 +304,7 @@ ${lines.join('\n\n')}
 🎨 <b>波色预测</b>: <b>【 ${pred.colorPred} 】</b> (赔率 ${pred.colorOdds} | 置信度 <code>${pred.colorConfidence}%</code>)
 --------------------------------------
 💡 <b>规律依据</b>:
-<i>${pred.rationale}</i>
+<i>${escapeHtml(pred.rationale)}</i>
 --------------------------------------
 <i>说明: 澳门三分彩每日480期，每期3U全天候智能推演结算。特码49和局退本金。生成时间: ${new Date().toLocaleTimeString('zh-CN')}</i>
 `.trim();
