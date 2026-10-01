@@ -1,5 +1,181 @@
 [
   {
+    "id": "log_1790855711197_722",
+    "time": "2026/10/1 19:55:11",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855711134_541",
+    "time": "2026/10/1 19:55:11",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #7)",
+    "detail": "初始 Offset: 225875370"
+  },
+  {
+    "id": "log_1790855711134_134",
+    "time": "2026/10/1 19:55:11",
+    "type": "看门狗自动自愈",
+    "status": "error",
+    "message": "检测到 Polling 停滞或心跳超时，自动重启监听进程",
+    "detail": "无心跳时间: 10秒"
+  },
+  {
+    "id": "log_1790855701183_629",
+    "time": "2026/10/1 19:55:01",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855701134_215",
+    "time": "2026/10/1 19:55:01",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #6)",
+    "detail": "初始 Offset: 225875370"
+  },
+  {
+    "id": "log_1790855701133_375",
+    "time": "2026/10/1 19:55:01",
+    "type": "看门狗自动自愈",
+    "status": "error",
+    "message": "检测到 Polling 停滞或心跳超时，自动重启监听进程",
+    "detail": "无心跳时间: 10秒"
+  },
+  {
+    "id": "log_1790855691156_343",
+    "time": "2026/10/1 19:54:51",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855691133_393",
+    "time": "2026/10/1 19:54:51",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #5)",
+    "detail": "初始 Offset: 225875370"
+  },
+  {
+    "id": "log_1790855691132_350",
+    "time": "2026/10/1 19:54:51",
+    "type": "看门狗自动自愈",
+    "status": "error",
+    "message": "检测到 Polling 停滞或心跳超时，自动重启监听进程",
+    "detail": "无心跳时间: 10秒"
+  },
+  {
+    "id": "log_1790855681169_520",
+    "time": "2026/10/1 19:54:41",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855681132_272",
+    "time": "2026/10/1 19:54:41",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #4)",
+    "detail": "初始 Offset: 225875370"
+  },
+  {
+    "id": "log_1790855681131_843",
+    "time": "2026/10/1 19:54:41",
+    "type": "看门狗自动自愈",
+    "status": "error",
+    "message": "检测到 Polling 停滞或心跳超时，自动重启监听进程",
+    "detail": "无心跳时间: 10秒"
+  },
+  {
+    "id": "log_1790855671156_834",
+    "time": "2026/10/1 19:54:31",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855671130_276",
+    "time": "2026/10/1 19:54:31",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #3)",
+    "detail": "初始 Offset: 225875370"
+  },
+  {
+    "id": "log_1790855671129_556",
+    "time": "2026/10/1 19:54:31",
+    "type": "看门狗自动自愈",
+    "status": "error",
+    "message": "检测到 Polling 停滞或心跳超时，自动重启监听进程",
+    "detail": "无心跳时间: 10秒"
+  },
+  {
+    "id": "log_1790855661144_846",
+    "time": "2026/10/1 19:54:21",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855661130_282",
+    "time": "2026/10/1 19:54:21",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #2)",
+    "detail": "初始 Offset: 225875370"
+  },
+  {
+    "id": "log_1790855661130_909",
+    "time": "2026/10/1 19:54:21",
+    "type": "看门狗自动自愈",
+    "status": "error",
+    "message": "检测到 Polling 停滞或心跳超时，自动重启监听进程",
+    "detail": "无心跳时间: 3秒"
+  },
+  {
+    "id": "log_1790855657762_356",
+    "time": "2026/10/1 19:54:17",
+    "type": "模式切换",
+    "status": "success",
+    "message": "检测到已绑定 24/7 生产 Webhook，本地自动转入 Webhook 模式",
+    "detail": "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first"
+  },
+  {
+    "id": "log_1790855591801_611",
+    "time": "2026/10/1 19:53:11",
+    "type": "Polling收到消息",
+    "status": "success",
+    "message": "收到更新 ID: 225875369",
+    "detail": "{\n  \"update_id\": 225875369,\n  \"message\": {\n    \"message_id\": 1017,\n    \"from\": {\n      \"id\": 7634524866,\n      \"is_bot\": false,\n      \"first_name\": \"weiSOSO@Super\",\n      \"last_name\": \"liSOSO@Super\",\n      \"username\": \"weili888\",\n      \"language_code\": \"zh-hans\"\n    },\n    \"chat\": {\n      \"id\": 7634524866,\n      \"first_name\": \"weiSOSO@Super\",\n      \"last_name\": \"liSOSO@Super\",\n      \"username\": \"weili888\",\n      \"type\": \"private\"\n    },\n    \"date\": 1790855419,\n    \"text\": \"📊 480期盈亏\"\n  }\n}"
+  },
+  {
+    "id": "log_1790855591572_97",
+    "time": "2026/10/1 19:53:11",
+    "type": "Polling收到消息",
+    "status": "success",
+    "message": "收到更新 ID: 225875368",
+    "detail": "{\n  \"update_id\": 225875368,\n  \"message\": {\n    \"message_id\": 1016,\n    \"from\": {\n      \"id\": 7634524866,\n      \"is_bot\": false,\n      \"first_name\": \"weiSOSO@Super\",\n      \"last_name\": \"liSOSO@Super\",\n      \"username\": \"weili888\",\n      \"language_code\": \"zh-hans\"\n    },\n    \"chat\": {\n      \"id\": 7634524866,\n      \"first_name\": \"weiSOSO@Super\",\n      \"last_name\": \"liSOSO@Super\",\n      \"username\": \"weili888\",\n      \"type\": \"private\"\n    },\n    \"date\": 1790847095,\n    \"text\": \"📜 历史记录\"\n  }\n}"
+  },
+  {
+    "id": "log_1790855591498_383",
+    "time": "2026/10/1 19:53:11",
+    "type": "Polling启动",
+    "status": "success",
+    "message": "启动 Telegram 守护轮询 (Session #1)",
+    "detail": "初始 Offset: 0"
+  },
+  {
     "id": "log_1790584465405_342",
     "time": "2026/9/28 16:34:25",
     "type": "Polling启动",

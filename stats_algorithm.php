@@ -184,6 +184,8 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
                 ];
             }
 
+            $correctionReason = [];
+
             // --- 维度 A: 连号与长龙识别 (Streak Recognition) ---
             $consecutiveBig = 0; $consecutiveSmall = 0;
             $consecutiveOdd = 0; $consecutiveEven = 0;
@@ -494,7 +496,7 @@ if (!function_exists('generatePredictFrom50DrawsPHP')) {
                 'topNumbers' => $topNumbers,
                 'topZodiacs' => $topZodiacs,
                 'topTails' => $topTails,
-                'correctionReason' => implode("\n", $correctionReason)
+                'correctionReason' => is_array($correctionReason) ? implode("\n", $correctionReason) : (string)$correctionReason
             ];
         };
 
